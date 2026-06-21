@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Live2D Parameter Test</title>
+    <style>
+        body { background: #1a1a2e; color: #eee; font-family: sans-serif; display: flex; gap: 20px; padding: 20px; }
+        #canvas-box { flex-shrink: 0; }
+        canvas { background: #000; border-radius: 8px; }
+        .controls { flex: 1; max-height: 90vh; overflow-y: auto; }
+        .group { margin-bottom: 16px; padding: 10px; background: #22263a; border-radius: 8px; }
+        .group h3 { margin: 0 0 8px; font-size: 14px; color: #6cb4ff; }
+        .param-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+        .param-row label { width: 180px; font-size: 12px; font-family: monospace; }
+        .param-row input[type=range] { flex: 1; }
+        .param-row .val { width: 50px; text-align: right; font-size: 12px; font-family: monospace; color: #5ceaa0; }
+        .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .presets button { padding: 6px 14px; border: 1px solid #444; background: #2a2f45; color: #eee; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .presets button:hover { background: #3a4060; }
+        .log { margin-top: 10px; padding: 8px; background: #0a0c12; border-radius: 6px; font-size: 11px; font-family: monospace; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+<div id="canvas-box">
+    <canvas id="live2d-canvas" width="500" height="700"></canvas>
+    <div id="log" class="log">Loading...</div>
+</div>
+
+<div class="controls">
+    <h2>Live2D Parameter Tester</h2>
+
+    <div class="presets">
+        <button onclick="applyPreset('neutral')">Neutral</button>
+        <button onclick="applyPreset('happy')">Happy</button>
+        <button onclick="applyPreset('angry')">Angry</button>
+        <button onclick="applyPreset('sad')">Sad</button>
+        <button onclick="applyPreset('surprised')">Surprised</button>
+        <button onclick="applyPreset('thinking')">Thinking</button>
+        <button onclick="applyPreset('shy')">Shy</button>
+        <button onclick="applyPreset('wave')">Wave</button>
+    </div>
+
+    <div id="param-controls"></div>
+</div>
+
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+<script>
+const MODEL_PATH = '/static/live2d/model/Hiyori/Hiyori.model3.json';
+const logEl = document.getElementById('log');
+function log(msg) { logEl.textContent += '\n' + msg; logEl.scrollTop = logEl.scrollHeight; }
+
+const PRESETS = {
+    neutral:   { ParamMouthForm: 1, ParamMouthOpenY: 0, ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 1, ParamEyeROpen: 1, ParamBrowLY: 0, ParamBrowRY: 0, ParamBrowLAngle: 0, ParamBrowRAngle: 0, ParamCheek: 0, ParamAngleX: 0, ParamAngleY: 0, ParamAngleZ: 0, ParamBodyAngleX: 0, ParamBodyAngleY: 0, ParamBodyAngleZ: 0, ParamEyeBallX: 0, ParamEyeBallY: 0, ParamArmLA: 0, ParamArmRA: 0, ParamArmLB: 0, ParamArmRB: 0, ParamShoulder: 0, ParamLeg: 1 },
+    happy:     { ParamMouthForm: 1, ParamMouthOpenY: 0.6, ParamEyeLSmile: 1, ParamEyeRSmile: 1, ParamEyeLOpen: 0.4, ParamEyeROpen: 0.4, ParamBrowLY: 0.8, ParamBrowRY: 0.8, ParamCheek: 1, ParamAngleX: 5, ParamAngleZ: -8, ParamBodyAngleX: 5, ParamBodyAngleZ: -3, ParamArmLA: 8, ParamArmRA: 8, ParamArmLB: 5, ParamArmRB: 5, ParamShoulder: 3, ParamLeg: 1 },
+    angry:     { ParamMouthForm: -1, ParamMouthOpenY: 0.5, ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 0.6, ParamEyeROpen: 0.6, ParamBrowLY: -1, ParamBrowRY: -1, ParamBrowLAngle: -1, ParamBrowRAngle: -1, ParamCheek: 0, ParamAngleX: -8, ParamAngleY: -10, ParamBodyAngleX: -5, ParamEyeBallY: -0.5, ParamArmLA: 5, ParamArmRA: 5, ParamArmLB: -5, ParamArmRB: -5, ParamShoulder: 4, ParamLeg: 1 },
+    sad:       { ParamMouthForm: -1, ParamMouthOpenY: 0.1, ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 0.3, ParamEyeROpen: 0.35, ParamBrowLY: -1, ParamBrowRY: -0.7, ParamBrowLAngle: 0.5, ParamBrowRAngle: 0.3, ParamCheek: 0, ParamAngleX: 10, ParamAngleY: -15, ParamAngleZ: 8, ParamBodyAngleX: -5, ParamBodyAngleZ: 3, ParamEyeBallY: -0.5, ParamArmLA: -3, ParamArmRA: -3, ParamArmLB: 0, ParamArmRB: 0, ParamShoulder: -0.5, ParamLeg: 1 },
+    surprised: { ParamMouthForm: 0.3, ParamMouthOpenY: 1, ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 1, ParamEyeROpen: 1, ParamBrowLY: 1, ParamBrowRY: 1, ParamCheek: 0.3, ParamAngleY: 10, ParamBodyAngleY: 5, ParamEyeBallY: 0.3, ParamArmLA: 8, ParamArmRA: 8, ParamArmLB: 8, ParamArmRB: 8, ParamShoulder: 4, ParamLeg: 1 },
+    thinking:  { ParamMouthForm: -0.3, ParamMouthOpenY: 0, ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 0.7, ParamEyeROpen: 0.85, ParamBrowLY: 0.5, ParamBrowRY: -0.3, ParamCheek: 0, ParamAngleX: 15, ParamAngleY: 5, ParamAngleZ: 8, ParamBodyAngleX: 5, ParamEyeBallX: 0.5, ParamEyeBallY: 0.3, ParamArmLA: 0, ParamArmRA: 6, ParamArmRB: 8, ParamHandR: 3, ParamShoulder: 1, ParamLeg: 1 },
+    shy:       { ParamMouthForm: 0.5, ParamMouthOpenY: 0.2, ParamEyeLSmile: 0.6, ParamEyeRSmile: 0.6, ParamEyeLOpen: 0.5, ParamEyeROpen: 0.5, ParamBrowLY: -0.3, ParamBrowRY: -0.3, ParamCheek: 1, ParamAngleX: -10, ParamAngleZ: 10, ParamBodyAngleX: -8, ParamBodyAngleZ: 5, ParamEyeBallX: -0.5, ParamArmLA: -5, ParamArmRA: -5, ParamArmLB: 3, ParamArmRB: 3, ParamShoulder: 2, ParamLeg: 1 },
+    wave:      { ParamMouthForm: 1, ParamMouthOpenY: 0.3, ParamEyeLSmile: 0.8, ParamEyeRSmile: 0.8, ParamEyeLOpen: 0.6, ParamEyeROpen: 0.6, ParamBrowLY: 0.5, ParamBrowRY: 0.5, ParamCheek: 0.7, ParamAngleX: 5, ParamAngleZ: -5, ParamBodyAngleX: 3, ParamArmLA: 0, ParamArmRA: 8, ParamArmRB: 9, ParamHandR: 5, ParamShoulder: 3, ParamLeg: 1 },
+};
+
+let model, cm, paramIds;
+// 持续强制的参数
+const forceParams = {};
+
+async function main() {
+    const canvas = document.getElementById('live2d-canvas');
+    const app = new PIXI.Application({
+        view: canvas, autoStart: true, backgroundAlpha: 0,
+        width: canvas.width, height: canvas.height,
+    });
+
+    log('Loading model...');
+    model = await PIXI.live2d.Live2DModel.from(MODEL_PATH);
+
+    // 缩小模型让全身（包括手臂）可见
+    const scale = Math.min(canvas.width / model.width, canvas.height / model.height) * 0.6;
+    model.scale.set(scale);
+    model.anchor.set(0.5, 0.5);
+    model.x = canvas.width / 2;
+    model.y = canvas.height / 2;
+    app.stage.addChild(model);
+
+    cm = model.internalModel.coreModel;
+    paramIds = Array.from(cm._parameterIds);
+    log('Params count: ' + paramIds.length);
+
+    // ★ 关键：探索 internalModel 的结构，找到 motion 更新的真正位置
+    const im = model.internalModel;
+    log('internalModel keys: ' + Object.getOwnPropertyNames(Object.getPrototypeOf(im)).join(', '));
+    log('motionManager: ' + typeof im.motionManager);
+
+    // 尝试覆盖 internalModel.update 本身
+    // pixi-live2d-display 的 Cubism4InternalModel.update() 会调用:
+    //   1. motionManager.update()  -> 设置参数
+    //   2. coreModel.update()      -> 计算顶点
+    // 我们需要跳过步骤1，只保留步骤2
+    const origIMUpdate = im.update.bind(im);
+    let useCustomUpdate = false;
+
+    // 保存原始 coreModel.update
+    const origCMUpdate = cm.update.bind(cm);
+
+    // 替换 internalModel.update：跳过 motion，直接设置参数 + 计算顶点
+    im.update = function(dt, now) {
+        if (useCustomUpdate) {
+            // 跳过 motion manager，只更新 physics 和顶点
+            // 先强制设置我们的参数
+            for (const [pid, val] of Object.entries(forceParams)) {
+                const idx = paramIds.indexOf(pid);
+                if (idx >= 0) cm.setParameterValueByIndex(idx, val);
+            }
+            // 物理模拟（如果有的话）
+            if (im.physics) {
+                im.physics.evaluate(cm, dt);
+            }
+            // 顶点计算
+            origCMUpdate();
+            // pose
+            if (im.pose) {
+                im.pose.updateParameters(cm);
+            }
+        } else {
+            origIMUpdate(dt, now);
+        }
+    };
+
+    // 默认状态：从 neutral 预设初始化所有参数
+    for (const [pid, val] of Object.entries(PRESETS.neutral)) {
+        forceParams[pid] = val;
+    }
+    forceParams['ParamBreath'] = 0.5;
+    forceParams['ParamLeg'] = 1;
+    forceParams['ParamHandLB'] = 10;
+    forceParams['ParamHandRB'] = 10;
+
+    // 先用默认模式（有 motion），3秒后切换到自定义模式
+    log('Using default mode (with motion) for 2 seconds...');
+    setTimeout(() => {
+        // 读取 motion 模式下 **所有** 参数的当前值，完整还原
+        for (let i = 0; i < paramIds.length; i++) {
+            const pid = paramIds[i];
+            const val = cm.getParameterValueByIndex(i);
+            forceParams[pid] = val;
+        }
+        log('Captured all ' + paramIds.length + ' param values from motion mode');
+
+        // 打印关键参数
+        const show = ['ParamArmLA', 'ParamArmRA', 'ParamArmLB', 'ParamArmRB', 'ParamHandL', 'ParamHandR', 'ParamHandLB', 'ParamHandRB', 'ParamShoulder', 'ParamLeg'];
+        for (const pid of show) {
+            if (forceParams[pid] !== undefined) log(pid + ' = ' + forceParams[pid].toFixed(2));
+        }
+
+        // 也打印所有 Part 开头的（可能控制可见性）
+        for (const pid of paramIds) {
+            if (pid.startsWith('Part')) {
+                const idx = paramIds.indexOf(pid);
+                const val = cm.getParameterValueByIndex(idx);
+                log('PART: ' + pid + ' = ' + val.toFixed(2));
+                forceParams[pid] = val;
+            }
+        }
+
+        useCustomUpdate = true;
+        log('★ Switched to custom update. Try presets now!');
+    }, 2000);
+
+    buildSliders();
+    log('Ready! Wait 2 seconds then try preset buttons.');
+}
+
+function buildSliders() {
+    const container = document.getElementById('param-controls');
+
+    // Live2D 标准参数范围（硬编码）
+    const RANGES = {
+        ParamMouthOpenY: [0, 1, 0], ParamMouthForm: [-1, 1, 0],
+        ParamEyeLOpen: [0, 1, 1], ParamEyeROpen: [0, 1, 1],
+        ParamEyeLSmile: [0, 1, 0], ParamEyeRSmile: [0, 1, 0],
+        ParamEyeBallX: [-1, 1, 0], ParamEyeBallY: [-1, 1, 0],
+        ParamBrowLY: [-1, 1, 0], ParamBrowRY: [-1, 1, 0],
+        ParamBrowLAngle: [-1, 1, 0], ParamBrowRAngle: [-1, 1, 0],
+        ParamAngleX: [-30, 30, 0], ParamAngleY: [-30, 30, 0], ParamAngleZ: [-30, 30, 0],
+        ParamCheek: [0, 1, 0],
+        ParamBodyAngleX: [-10, 10, 0], ParamBodyAngleY: [-10, 10, 0], ParamBodyAngleZ: [-10, 10, 0],
+        ParamBreath: [0, 1, 0],
+        ParamShoulder: [-1, 4, 0], ParamLeg: [-1, 1, 0],
+        ParamArmLA: [-10, 10, 0], ParamArmRA: [-10, 10, 0],
+        ParamArmLB: [-10, 10, 0], ParamArmRB: [-10, 10, 0],
+        ParamHandL: [-1, 1, 0], ParamHandR: [-1, 1, 0],
+        ParamHandLB: [-1, 1, 0], ParamHandRB: [-1, 1, 0],
+    };
+    const getMin = (idx, pid) => (RANGES[pid] || [-1,1,0])[0];
+    const getMax = (idx, pid) => (RANGES[pid] || [-1,1,0])[1];
+    const getDef = (idx, pid) => (RANGES[pid] || [-1,1,0])[2];
+    log('Using hardcoded parameter ranges');
+
+    const groups = {
+        'Mouth': ['ParamMouthOpenY', 'ParamMouthForm'],
+        'Eyes': ['ParamEyeLOpen', 'ParamEyeROpen', 'ParamEyeLSmile', 'ParamEyeRSmile', 'ParamEyeBallX', 'ParamEyeBallY'],
+        'Brows': ['ParamBrowLY', 'ParamBrowRY', 'ParamBrowLAngle', 'ParamBrowRAngle'],
+        'Face': ['ParamAngleX', 'ParamAngleY', 'ParamAngleZ', 'ParamCheek'],
+        'Body': ['ParamBodyAngleX', 'ParamBodyAngleY', 'ParamBodyAngleZ', 'ParamBreath', 'ParamShoulder', 'ParamLeg'],
+        'Arms': ['ParamArmLA', 'ParamArmRA', 'ParamArmLB', 'ParamArmRB', 'ParamHandL', 'ParamHandR', 'ParamHandLB', 'ParamHandRB'],
+    };
+
+    for (const [groupName, params] of Object.entries(groups)) {
+        const div = document.createElement('div');
+        div.className = 'group';
+        div.innerHTML = `<h3>${groupName}</h3>`;
+
+        for (const pid of params) {
+            const idx = paramIds.indexOf(pid);
+            if (idx < 0) continue;
+            try {
+                const minVal = getMin(idx, pid);
+                const maxVal = getMax(idx, pid);
+                const defVal = getDef(idx, pid);
+
+                const row = document.createElement('div');
+                row.className = 'param-row';
+                row.innerHTML = `
+                    <label>${pid}</label>
+                    <input type="range" min="${minVal}" max="${maxVal}" step="0.01" value="${defVal}"
+                        oninput="onSlider('${pid}', this.value)">
+                    <span class="val" id="val-${pid}">${defVal.toFixed ? defVal.toFixed(2) : defVal}</span>
+                `;
+                div.appendChild(row);
+            } catch(e) {
+                log('Slider error for ' + pid + ': ' + e.message);
+            }
+        }
+        container.appendChild(div);
+    }
+}
+
+function onSlider(paramName, value) {
+    const v = parseFloat(value);
+    document.getElementById('val-' + paramName).textContent = v.toFixed(2);
+    forceParams[paramName] = v;
+}
+
+function applyPreset(name) {
+    const preset = PRESETS[name];
+    if (!preset) return;
+    log('Applying: ' + name);
+
+    // 用硬编码默认值重置表情参数
+    const DEFAULTS = {
+        ParamMouthForm: 0, ParamMouthOpenY: 0,
+        ParamEyeLSmile: 0, ParamEyeRSmile: 0, ParamEyeLOpen: 1, ParamEyeROpen: 1,
+        ParamBrowLY: 0, ParamBrowRY: 0, ParamBrowLAngle: 0, ParamBrowRAngle: 0,
+        ParamCheek: 0, ParamAngleX: 0, ParamAngleY: 0, ParamAngleZ: 0,
+        ParamBodyAngleX: 0, ParamBodyAngleY: 0, ParamBodyAngleZ: 0,
+        ParamEyeBallX: 0, ParamEyeBallY: 0,
+        ParamArmLA: 0, ParamArmRA: 0, ParamArmLB: 0, ParamArmRB: 0,
+        ParamHandL: 0, ParamHandR: 0, ParamHandLB: 0, ParamHandRB: 0,
+        ParamShoulder: 0,
+    };
+    for (const [pid, defVal] of Object.entries(DEFAULTS)) {
+        forceParams[pid] = defVal;
+        const slider = document.querySelector(`input[oninput*="${pid}"]`);
+        if (slider) slider.value = defVal;
+        const valEl = document.getElementById('val-' + pid);
+        if (valEl) valEl.textContent = defVal.toFixed(2);
+    }
+
+    // 应用预设
+    for (const [pid, value] of Object.entries(preset)) {
+        forceParams[pid] = value;
+        const slider = document.querySelector(`input[oninput*="${pid}"]`);
+        if (slider) slider.value = value;
+        const valEl = document.getElementById('val-' + pid);
+        if (valEl) valEl.textContent = value.toFixed(2);
+    }
+}
+
+main().catch(e => log('Error: ' + e));
+</script>
+</body>
+</html>

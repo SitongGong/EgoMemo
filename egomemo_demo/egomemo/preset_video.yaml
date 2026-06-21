@@ -1,0 +1,5 @@
+# 预设视频配置
+# path: 服务器上视频文件的绝对路径（后端会直接使用，不做拷贝）
+# label: 前端按钮上显示的标签（可选，默认用文件名）
+path: /path/to/test_videos/sample_video.mp4
+label: "Load Preset (3_46_360p)"

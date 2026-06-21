@@ -1,0 +1,36 @@
+# EgoMemo 依赖（不含 vLLM 服务端，见 README §4 单独安装）
+# Python 3.10 推荐
+
+# --- 核心 ---
+openai>=1.0
+transformers==4.57.1
+tenacity
+numpy
+pillow
+networkx
+
+# --- 视频 / 帧处理 ---
+moviepy<2.0          # 2.x 移除了 moviepy.editor，必须用 1.x
+decord
+opencv-python-headless
+qwen_vl_utils
+
+# --- 记忆引擎存储 ---
+nano_vectordb
+hnswlib
+xxhash
+neo4j
+
+# --- 音频 / TTS / 其它 ---
+faster_whisper
+edge-tts             # Web 语音播报（免费，连微软在线服务）
+ollama               # videorag 部分后端用到
+
+# --- Web 服务 ---
+fastapi
+uvicorn
+python-multipart
+
+# --- 可选：视觉 embedding ---
+# ImageBind 需从源码安装并下载 imagebind_huge.pth，见 README §4
+# https://github.com/facebookresearch/ImageBind

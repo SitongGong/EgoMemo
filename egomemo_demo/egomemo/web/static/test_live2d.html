@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Live2D Test</title>
+    <style>
+        body { background: #1a1d27; color: #e4e6eb; font-family: sans-serif; text-align: center; padding: 20px; }
+        canvas { border: 1px solid #444; border-radius: 12px; margin: 10px; }
+        button { padding: 8px 20px; margin: 5px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; }
+        .btn-blue { background: #4a9eff; color: #fff; }
+        .btn-green { background: #34d399; color: #fff; }
+        .btn-orange { background: #f59e0b; color: #fff; }
+        .btn-red { background: #ef4444; color: #fff; }
+        input[type=range] { width: 300px; margin: 10px; }
+        #log { text-align: left; background: #0f1117; padding: 10px; border-radius: 8px; max-height: 300px; overflow-y: auto; font-size: 12px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<h2>Live2D Avatar Test Page</h2>
+<canvas id="canvas" width="400" height="500"></canvas>
+
+<div>
+    <h3>1. Mouth Slider</h3>
+    <input type="range" id="mouth-slider" min="0" max="100" value="0">
+    <span id="mouth-value">0.00</span>
+
+    <h3>2. Motions</h3>
+    <button class="btn-blue" onclick="playMotion('Idle', 0)">Idle 1</button>
+    <button class="btn-orange" onclick="playMotion('TapBody', 0)">TapBody</button>
+
+    <h3>3. Lip Sync</h3>
+    <input type="text" id="speak-text" value="Hello, I can see you are making coffee on the table."
+        style="width:400px; padding:6px; border-radius:6px; border:1px solid #444; background:#0f1117; color:#e4e6eb;">
+    <br>
+    <button class="btn-green" onclick="testSpeech()">Speak + Lip Sync</button>
+    <button class="btn-orange" onclick="testAutoLipSync()">Auto Lip Sync (3s)</button>
+    <button class="btn-red" onclick="stopAll()">Stop</button>
+</div>
+
+<div id="log"></div>
+
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
+<script>
+let app, model;
+let mouthTarget = 0;
+let lipSyncTimer = null;
+
+function log(msg) {
+    const el = document.getElementById('log');
+    el.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+    el.scrollTop = el.scrollHeight;
+}
+
+async function init() {
+    log('Loading...');
+    const canvas = document.getElementById('canvas');
+
+    app = new PIXI.Application({
+        view: canvas, autoStart: true, backgroundAlpha: 0,
+        width: canvas.width, height: canvas.height,
+    });
+
+    try {
+        model = await PIXI.live2d.Live2DModel.from('/static/live2d/model/Hiyori/Hiyori.model3.json');
+
+        const scale = Math.min(canvas.width / model.width, canvas.height / model.height) * 1.8;
+        model.scale.set(scale);
+        model.anchor.set(0.5, 0.5);
+        model.x = canvas.width / 2;
+        model.y = canvas.height / 2 + 60;
+        app.stage.addChild(model);
+
+        const cm = model.internalModel.coreModel;
+        const mouthIdx = cm._parameterIds.indexOf('ParamMouthOpenY');
+        log('ParamMouthOpenY index: ' + mouthIdx);
+
+        // SOLUTION: Hook into coreModel.update() — this is called right before
+        // the model draws. After update() computes all vertex positions from
+        // parameters, the draw happens. We need to set the parameter BEFORE
+        // update() is called.
+        //
+        // The call chain is:
+        //   internalModel.update() -> motionManager.update() -> coreModel parameters set
+        //   -> coreModel.update() -> compute vertices from parameters
+        //   -> draw
+        //
+        // We hook BEFORE coreModel.update() to inject our mouth value
+        // AFTER motions have set their values but BEFORE vertices are computed.
+
+        const origCoreUpdate = cm.update.bind(cm);
+        cm.update = function() {
+            // Force mouth parameter right before vertex computation
+            if (mouthIdx >= 0) {
+                cm.setParameterValueByIndex(mouthIdx, mouthTarget);
+            }
+            origCoreUpdate();
+        };
+
+        log('Hooked coreModel.update() — mouth control active');
+        model.motion('Idle');
+        log('Ready! Drag slider to test.');
+
+    } catch (e) {
+        log('ERROR: ' + e.message);
+        console.error(e);
+    }
+}
+
+document.getElementById('mouth-slider').addEventListener('input', (e) => {
+    mouthTarget = parseInt(e.target.value) / 100;
+    document.getElementById('mouth-value').textContent = mouthTarget.toFixed(2);
+});
+
+function playMotion(group, index) { if (model) model.motion(group, index); }
+
+function testSpeech() {
+    const text = document.getElementById('speak-text').value;
+    if (!text || !window.speechSynthesis) return;
+    stopAll();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.onstart = () => { startLipSync(); log('Speaking...'); };
+    u.onend = () => { stopAll(); log('Done'); };
+    window.speechSynthesis.speak(u);
+}
+
+function testAutoLipSync() {
+    stopAll(); startLipSync();
+    setTimeout(() => { stopAll(); log('Done'); }, 3000);
+    log('Auto lip sync 3s...');
+}
+
+function startLipSync() {
+    let phase = 0;
+    lipSyncTimer = setInterval(() => {
+        phase += 0.35;
+        mouthTarget = (Math.sin(phase) + 1) / 2 * 1.0;
+    }, 50);
+}
+
+function stopAll() {
+    if (lipSyncTimer) { clearInterval(lipSyncTimer); lipSyncTimer = null; }
+    window.speechSynthesis.cancel();
+    mouthTarget = 0;
+}
+
+init();
+</script>
+</body>
+</html>

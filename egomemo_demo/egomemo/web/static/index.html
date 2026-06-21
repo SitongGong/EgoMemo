@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EgoMemo - Egocentric Video Assistant</title>
+    <link rel="stylesheet" href="/static/style.css?v=59">
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <h1>EgoMemo</h1>
+    <div class="status">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-label">Idle</span>
+    </div>
+</div>
+
+<!-- Main Layout -->
+<div class="main-layout">
+
+    <!-- Left Panel -->
+    <div class="left-panel">
+
+        <!-- Video + Avatar + Subtitle (layered) -->
+        <div class="video-section">
+            <div class="video-stage">
+
+                <!-- Left: AR Boy (user wearing glasses) -->
+                <div class="ar-boy-column">
+                    <div class="ar-boy-figure">
+                        <img src="/static/image.png" alt="AR Glasses User" class="ar-boy-img">
+                        <!-- Camera glow on glasses -->
+                        <div class="ar-camera-dot">
+                            <div class="ar-camera-ring"></div>
+                            <div class="ar-camera-ring ring2"></div>
+                        </div>
+                    </div>
+                    <div class="ar-boy-label">USER</div>
+                    <button class="ar-boy-mic" id="btn-voice-boy" onclick="toggleVoiceInput()" title="Click to speak">
+                        <span class="ar-boy-mic-icon">&#x1F3A4;</span>
+                    </button>
+                    <button class="ar-boy-start" id="btn-start-boy" onclick="startProcessing()">&#x25B6; Start</button>
+                </div>
+
+                <!-- Projection cone: absolute overlay on entire stage, origin at glasses camera -->
+                <div class="ar-projection-cone">
+                    <svg class="cone-svg" viewBox="0 0 1000 600" preserveAspectRatio="none">
+                        <defs>
+                            <radialGradient id="coneGrad2" cx="80" cy="220" r="350" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.8"/>
+                                <stop offset="20%" stop-color="#00e5ff" stop-opacity="0.25"/>
+                                <stop offset="50%" stop-color="#00e5ff" stop-opacity="0.08"/>
+                                <stop offset="100%" stop-color="#00e5ff" stop-opacity="0.01"/>
+                            </radialGradient>
+                            <filter id="coneGlow2">
+                                <feGaussianBlur stdDeviation="6" result="blur"/>
+                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                            </filter>
+                        </defs>
+                        <!-- 三角形光锥：光点 -> 视频框左上角、左下角（JS会动态覆盖） -->
+                        <polygon points="80,220 220,0 220,600" fill="url(#coneGrad2)" filter="url(#coneGlow2)"/>
+                        <line x1="80" y1="220" x2="220" y2="0" stroke="rgba(0,229,255,0.25)" stroke-width="1.5"/>
+                        <line x1="80" y1="220" x2="220" y2="600" stroke="rgba(0,229,255,0.25)" stroke-width="1.5"/>
+                        <circle cx="80" cy="220" r="5" fill="#00e5ff" opacity="0.9"/>
+                        <circle cx="80" cy="220" r="10" fill="none" stroke="#00e5ff" stroke-width="1.5" opacity="0.4">
+                            <animate attributeName="r" values="10;18;10" dur="2s" repeatCount="indefinite"/>
+                            <animate attributeName="opacity" values="0.4;0.1;0.4" dur="2s" repeatCount="indefinite"/>
+                        </circle>
+                        <circle r="3" fill="#00e5ff" opacity="0.6">
+                            <animateMotion dur="1.5s" repeatCount="indefinite" path="M80,220 L220,0"/>
+                        </circle>
+                        <circle r="3" fill="#00e5ff" opacity="0.5">
+                            <animateMotion dur="2s" repeatCount="indefinite" path="M80,220 L220,600" begin="0.5s"/>
+                        </circle>
+                        <circle r="2" fill="#00e5ff" opacity="0.4">
+                            <animateMotion dur="1.8s" repeatCount="indefinite" path="M80,220 L220,300" begin="0.3s"/>
+                        </circle>
+                    </svg>
+                </div>
+
+                <!-- Center: Video container -->
+                <div class="video-container" id="video-container">
+                    <div class="drop-zone" id="drop-zone">
+                        <div class="icon">&#x1F4F9;</div>
+                        <p>Drag & drop a video here, or click to select</p>
+                        <input type="file" id="file-input" accept="video/*" hidden>
+                        <button type="button" id="btn-load-preset" class="btn-load-preset" style="display:none"
+                                onclick="loadPresetVideo(event)">Load Preset Video</button>
+                    </div>
+
+                    <div class="ar-lens-overlay"></div>
+
+                    <div class="ar-hud" id="ar-hud">
+                        <div class="ar-hud-corner ar-hud-tl">
+                            <div class="ar-hud-bracket"></div>
+                            <div class="ar-hud-time" id="ar-hud-time">00:00:00</div>
+                            <div class="ar-hud-label">LIVE VIEW</div>
+                        </div>
+                        <div class="ar-hud-corner ar-hud-tr">
+                            <div class="ar-hud-bracket"></div>
+                            <div class="ar-hud-status" id="ar-hud-status">
+                                <span class="ar-hud-dot"></span> STANDBY
+                            </div>
+                        </div>
+                        <div class="ar-hud-corner ar-hud-bl">
+                            <div class="ar-hud-bracket"></div>
+                            <div class="ar-hud-metric" id="ar-hud-step">Step --</div>
+                        </div>
+                        <div class="ar-hud-corner ar-hud-br">
+                            <div class="ar-hud-bracket"></div>
+                            <div class="ar-hud-metric" id="ar-hud-frame">Frame --</div>
+                        </div>
+                    </div>
+
+                    <div class="ar-scan-overlay" id="ar-scan-overlay">
+                        <div class="ar-scan-line"></div>
+                        <div class="ar-scan-corner tl"></div>
+                        <div class="ar-scan-corner tr"></div>
+                        <div class="ar-scan-corner bl"></div>
+                        <div class="ar-scan-corner br"></div>
+                        <div class="ar-scan-label">ANALYZING</div>
+                    </div>
+
+                    <!-- AR Glasses + Avatar inside video (right side) -->
+                    <div class="ar-avatar-inset">
+                        <div class="ar-glasses-icon">
+                            <svg viewBox="0 0 120 50" fill="none">
+                                <rect x="6" y="10" width="42" height="26" rx="8" stroke="#00e5ff" stroke-width="2.5" fill="rgba(0,229,255,0.06)"/>
+                                <rect x="72" y="10" width="42" height="26" rx="8" stroke="#00e5ff" stroke-width="2.5" fill="rgba(0,229,255,0.06)"/>
+                                <path d="M48 23 Q60 18 72 23" stroke="#00e5ff" stroke-width="2" fill="none"/>
+                                <line x1="6" y1="20" x2="0" y2="16" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+                                <line x1="114" y1="20" x2="120" y2="16" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+                                <rect x="6" y="10" width="42" height="26" rx="8" fill="rgba(0,229,255,0.03)">
+                                    <animate attributeName="fill" values="rgba(0,229,255,0.03);rgba(0,229,255,0.10);rgba(0,229,255,0.03)" dur="2.5s" repeatCount="indefinite"/>
+                                </rect>
+                            </svg>
+                        </div>
+                        <div class="holo-projection">
+                            <div class="holo-beam"></div>
+                            <div class="holo-beam beam-delay1"></div>
+                            <div class="holo-ring"></div>
+                            <div class="holo-ring ring-delay1"></div>
+                        </div>
+                        <div class="video-avatar-overlay" id="video-avatar-overlay">
+                            <canvas id="live2d-canvas" width="180" height="280"></canvas>
+                        </div>
+                        <div class="ar-avatar-label">AI ASSISTANT</div>
+                    </div>
+
+                    <!-- Dialogue bubbles -->
+                    <div class="video-question-bubble" id="video-question-bubble"></div>
+                    <div class="video-answer-bubble" id="video-answer-bubble"></div>
+
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Compact Controls -->
+        <div class="question-input-section">
+            <h3>Pipeline Parameters</h3>
+            <div class="param-grid">
+                <div class="param-item">
+                    <label for="p-step-interval">Interval (s)</label>
+                    <input type="number" id="p-step-interval" value="2" min="1" max="30" step="1">
+                </div>
+                <div class="param-item">
+                    <label for="p-caption-window">Window (s)</label>
+                    <input type="number" id="p-caption-window" value="10" min="5" max="60" step="5">
+                </div>
+                <div class="param-item">
+                    <label for="p-proactive-cooldown">Cooldown (s)</label>
+                    <input type="number" id="p-proactive-cooldown" value="30" min="5" max="120" step="5">
+                </div>
+                <div class="param-item">
+                    <label for="p-playback-speed">Speed</label>
+                    <select id="p-playback-speed">
+                        <option value="0.25">0.25x</option>
+                        <option value="0.5">0.5x</option>
+                        <option value="1" selected>1x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2x</option>
+                        <option value="3">3x</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label for="p-playback-fps">FPS</label>
+                    <select id="p-playback-fps">
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="15" selected>15</option>
+                        <option value="24">24</option>
+                        <option value="30">30</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label for="p-datasets-type">Dataset</label>
+                    <select id="p-datasets-type">
+                        <option value="holoassist" selected>HoloAssist</option>
+                        <option value="egolife">EgoLife (Demo)</option>
+                        <option value="eyewo">EyeWo</option>
+                        <option value="proassist">ProAssist</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label title="Force a hydration reminder at the end of the video (demo only)">
+                        <input type="checkbox" id="p-hydration-reminder"> Hydrate
+                    </label>
+                </div>
+                <div class="param-item">
+                    <label title="Append circuit-breaker repair scene rules (safety/wrong-target/wrong-dose) to the proactive system prompt">
+                        <input type="checkbox" id="p-circuit-breaker-scene"> CB Scene
+                    </label>
+                </div>
+                <div class="param-item">
+                    <label title="Append Microwave Egg Sandwich recipe guidance to the per-question prompt. When the user asks for cooking guidance, the model first says 'Let me search it up online for you.' and then lists the key steps.">
+                        <input type="checkbox" id="p-egg-recipe"> Egg Sandwich
+                    </label>
+                </div>
+                <div class="param-item">
+                    <label><input type="checkbox" id="p-clear-cache" checked> Cache</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Questions -->
+        <div class="question-input-section">
+            <h3>Schedule Questions</h3>
+            <div class="input-row">
+                <input type="text" id="q-text" placeholder="Type your question here..."
+                    onkeydown="if(event.key==='Enter')addScheduledQuestion()">
+                <input type="number" id="q-time" placeholder="t(s)" min="0" step="1" value="0">
+                <label class="recurring-label"><input type="checkbox" id="q-recurring"> Rec</label>
+                <button class="btn btn-secondary" onclick="addScheduledQuestion()">Add</button>
+            </div>
+        </div>
+
+        <!-- Scheduled Questions List -->
+        <div class="scheduled-questions" id="scheduled-questions"></div>
+
+        <!-- Start Button -->
+        <div class="start-controls">
+            <button class="btn btn-start" id="btn-start" onclick="startProcessing()">Start Processing</button>
+        </div>
+
+        <!-- Event Log -->
+        <div class="event-log">
+            <h3>Event Timeline</h3>
+            <div id="event-log-content"></div>
+        </div>
+
+    </div>
+
+    <!-- Right Panel: Reasoning + Chat -->
+    <div class="right-panel">
+
+        <!-- TOP: Reasoning Process Panel (same height as video) -->
+        <div class="reasoning-panel" id="reasoning-panel">
+            <!-- Glasses -> Thought projection -->
+            <div class="reasoning-glasses-link">
+                <svg class="reasoning-glasses-svg" viewBox="0 0 120 40" fill="none">
+                    <rect x="6" y="8" width="42" height="22" rx="7" stroke="#00e5ff" stroke-width="2" fill="rgba(0,229,255,0.06)"/>
+                    <rect x="72" y="8" width="42" height="22" rx="7" stroke="#00e5ff" stroke-width="2" fill="rgba(0,229,255,0.06)"/>
+                    <path d="M48 19 Q60 14 72 19" stroke="#00e5ff" stroke-width="1.5" fill="none"/>
+                    <line x1="6" y1="16" x2="0" y2="13" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="114" y1="16" x2="120" y2="13" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+                    <!-- Lens glow pulse -->
+                    <rect x="6" y="8" width="42" height="22" rx="7" fill="rgba(0,229,255,0.03)">
+                        <animate attributeName="fill" values="rgba(0,229,255,0.03);rgba(0,229,255,0.10);rgba(0,229,255,0.03)" dur="2.5s" repeatCount="indefinite"/>
+                    </rect>
+                </svg>
+                <div class="reasoning-glasses-beam">
+                    <div class="reasoning-glasses-beam-line"></div>
+                    <div class="reasoning-glasses-beam-line delay1"></div>
+                </div>
+                <span class="reasoning-glasses-label">AI THOUGHT STREAM</span>
+            </div>
+            <div class="reasoning-header">
+                <svg class="reasoning-header-icon-svg" viewBox="0 0 24 24" fill="none" width="18" height="18">
+                    <circle cx="12" cy="12" r="10" stroke="#00e5ff" stroke-width="1.5" fill="rgba(0,229,255,0.06)"/>
+                    <path d="M8 12h8M12 8v8" stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="12" cy="12" r="3" stroke="#00e5ff" stroke-width="1" fill="rgba(0,229,255,0.15)"/>
+                </svg>
+                <span class="reasoning-header-title">Reasoning Process</span>
+                <div class="reasoning-header-stats">
+                    <span id="stat-steps">0</span> steps |
+                    <span id="stat-answers">0</span> answers |
+                    <span id="stat-proactive">0</span> proactive
+                </div>
+            </div>
+            <div class="reasoning-content" id="reasoning-content">
+                <div class="reasoning-placeholder">Waiting for processing to start...</div>
+            </div>
+        </div>
+
+        <!-- BOTTOM: Chat + Controls (scrollable) -->
+        <div class="chat-section-below">
+
+            <!-- Avatar controls -->
+            <div class="avatar-controls">
+                <div id="avatar-status" style="font-size:11px; min-width:50px;">Idle</div>
+                <input type="text" id="avatar-test-text" value="Hello, I can see you are making coffee."
+                    onkeydown="if(event.key==='Enter')testAvatar()">
+                <button onclick="testAvatar()">Test</button>
+                <span style="font-size:10px; color:var(--text-secondary);">Mouth</span>
+                <input type="range" id="mouth-amp" min="50" max="300" value="150" style="width:60px;" oninput="updateMouthAmp(this.value)">
+                <span id="mouth-amp-val" style="font-size:10px; color:var(--text-secondary);">150%</span>
+            </div>
+
+            <div class="chat-header">
+                <div class="chat-header-icon">&#x1F4AC;</div>
+                <div class="chat-header-title">Reply content</div>
+            </div>
+
+            <div class="chat-messages" id="chat-messages"></div>
+
+            <!-- ASR 测试区 -->
+            <div class="asr-test-bar">
+                <button id="btn-asr-test" onclick="toggleASRTest()" class="btn btn-secondary" title="ASR Test"
+                    style="background:rgba(255,179,71,0.2); color:var(--accent-orange); border:1px solid rgba(255,179,71,0.3); font-weight:600; white-space:nowrap;">&#x1F3A4; ASR Test</button>
+                <span id="asr-test-status" style="font-size:11px; color:var(--text-secondary);">Click to test mic</span>
+                <div id="asr-test-output" style="flex:1; color:var(--text-primary); font-size:12px; padding:3px 8px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:8px; min-height:20px; word-break:break-word;"></div>
+            </div>
+
+            <div class="chat-input-bar" id="chat-input-bar">
+                <button class="btn-voice" id="btn-voice" onclick="toggleVoiceInput()" title="Click to speak, click again to stop">
+                    <span id="voice-icon">&#x1F3A4;</span>
+                </button>
+                <input type="text" id="chat-input" placeholder="Type or use mic..."
+                    onkeydown="if(event.key==='Enter')sendChatQuestion()">
+                <label class="recurring-label"><input type="checkbox" id="chat-recurring"> Rec</label>
+                <button class="btn btn-primary" onclick="sendChatQuestion()">Send</button>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Hidden pause overlay (kept for compatibility, not shown) -->
+<div class="pause-overlay" id="pause-overlay" style="display:none;">
+    <div class="pause-overlay-inner">
+        <div class="pause-outputs" id="pause-outputs"></div>
+        <input type="text" id="pause-q-text" style="display:none;">
+        <input type="checkbox" id="pause-q-recurring" style="display:none;">
+    </div>
+</div>
+
+<!-- P7: 环境粒子 -->
+<div class="ar-ambient-particles" aria-hidden="true">
+    <span></span><span></span><span></span><span></span><span></span>
+</div>
+
+<script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.10/dist/browser/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+<script src="/static/live2d_avatar.js?v=36"></script>
+<script src="/static/app.js?v=67"></script>
+</body>
+</html>
