@@ -1,0 +1,1915 @@
+HOLOASSIST_PROMPTS["proactive_service_prompt"] = """
+You are a proactive service decision assistant for egocentric video.
+
+You will be given:
+
+(1) CURRENT_30S_CAPTION
+    A detailed first-person ("I") description of the current ~30-second moment.
+    This caption may include fine-grained, second-level timestamps for specific actions or states.
+
+This is your PRIMARY and REQUIRED evidence.
+No other visual context is guaranteed to be available at input time.
+
+------------------------------------------------------------
+Your Task
+------------------------------------------------------------
+
+Decide whether the user should receive any proactive service
+triggered by the CURRENT 30-second moment.
+
+CRITICAL PRINCIPLES:
+- Any proactive service MUST be justified by evidence visible in CURRENT_30S_CAPTION.
+- You must NOT trigger a service solely based on assumptions about the past.
+- Short-Term Proactive Services may require additional recent context
+  (up to ~10 minutes).
+
+Therefore:
+- You MUST decide whether additional memory retrieval is necessary.
+- If additional context is required to confirm, disambiguate, or validate
+  a Short-Term service, you MUST request memory retrieval.
+- If the CURRENT_30S_CAPTION alone is sufficient, do NOT request retrieval.
+
+If evidence is weak or ambiguous even after considering retrieval,
+prefer returning [].
+
+------------------------------------------------------------
+Authoritative Service Taxonomy
+------------------------------------------------------------
+
+IMPORTANT:
+Although CURRENT_30S_CAPTION spans ~30 seconds,
+Instant services may be triggered if ANY moment within this window
+shows an immediately dangerous or unsafe action or state.
+
+------------------------------------------------------------
+
+A) Instant Proactive Services
+(time horizon: seconds; justified by current scene alone — NO retrieval required)
+
+1. Safety
+Trigger if the CURRENT 30-second moment contains any action, posture,
+or configuration that could immediately cause bodily harm or an accident.
+
+Examples include:
+- proximity to sharp tools, heat, electricity, or moving machinery;
+- unstable body positioning near hazards;
+- slipping risk, falling risk, or uncontrolled motion.
+
+RULE:
+If the action could plausibly injure the user RIGHT NOW,
+classify as Safety, even if a tool is involved.
+
+2. Tool Use
+Trigger if a tool is being handled, configured, or operated
+in an unsafe, unstable, or improper manner,
+but WITHOUT evidence that a wrong procedural step
+has already occurred.
+
+Examples:
+- incorrect grip or orientation;
+- loose or misaligned attachment;
+- missing guard or protection;
+- tool left running when it should be powered off.
+
+------------------------------------------------------------
+
+B) Short-Term Proactive Services
+(time horizon: ~10 seconds – 10 minutes, same session)
+
+Short-Term services MAY require past context beyond CURRENT_30S_CAPTION.
+You must explicitly decide whether memory retrieval is needed.
+
+1. Error-Recovery
+Trigger ONLY if:
+- the user has JUST completed a clearly incorrect procedural step;
+- the step must be corrected or rolled back to proceed.
+
+Examples:
+- wrong component assembled;
+- wrong cable connected;
+- incorrect order of operations;
+- wrong target, slot, or configuration selected.
+
+CRITICAL DISTINCTION:
+- Tool Use = unsafe handling, no wrong step completed.
+- Error-Recovery = wrong step already completed.
+
+If it is unclear whether the step is actually wrong,
+you SHOULD request memory retrieval.
+
+2. Next-Step Guidance
+Trigger if:
+- a task or workflow is clearly underway;
+- a step appears correctly completed;
+- the CURRENT moment shows transition, pause, or preparation,
+  but the next expected step has not begun.
+
+If confirmation of task progression requires earlier steps,
+you SHOULD request memory retrieval.
+
+3. Resource Reminder
+Trigger if the CURRENT moment shows the user transitioning away
+while leaving an unresolved state behind.
+
+Examples:
+- tool still powered on;
+- fastener not tightened;
+- material not secured;
+- workspace not reset or stabilized.
+
+If it is unclear whether the state is unresolved,
+you SHOULD request memory retrieval.
+
+------------------------------------------------------------
+Trigger Time Window Resolution Rule
+------------------------------------------------------------
+
+CRITICAL RULE — trigger_time_window resolution priority:
+
+- You MUST first attempt to extract a precise time span
+  from Second-level (dense) captions inside CURRENT_30S_CAPTION.
+- Second-level captions specify a narrower time range
+  (e.g., DAY# HH:MM:SS-HH:MM:SS) for a concrete action or state.
+
+Resolution priority (MANDATORY):
+1. Use the dense timestamp that directly corresponds
+   to the triggering action or state.
+2. If multiple dense timestamps exist,
+   select the one most causally aligned.
+3. Only if no dense timestamp exists,
+   fall back to the full 30-second window.
+
+Forbidden behavior:
+- Defaulting to the full 30-second window when a dense timestamp exists.
+- Selecting unrelated timestamps.
+- Fabricating or averaging time spans.
+
+------------------------------------------------------------
+Memory Retrieval Rule (CRITICAL)
+------------------------------------------------------------
+
+You MUST independently decide whether memory retrieval is required.
+
+Retrieval is REQUIRED if:
+- confirming a Short-Term service depends on earlier steps;
+- determining whether an action is incorrect requires prior context;
+- validating whether a task step is completed or unresolved
+  requires recent history (≤ ~10 minutes).
+
+Retrieval is NOT allowed if:
+- the service is Instant (Safety or Tool Use);
+- the CURRENT_30S_CAPTION alone is sufficient.
+
+If retrieval is required:
+Output a memory_query field EXACTLY as:
+
+<query>...</query>
+
+The query must be:
+- a single concise natural-language sentence;
+- optimized to retrieve the most relevant recent task memory.
+
+If retrieval is NOT required, do NOT output memory_query.
+
+------------------------------------------------------------
+Output Format (STRICT)
+------------------------------------------------------------
+
+If NO proactive service is needed now, output exactly:
+[]
+
+If a proactive service IS needed, output exactly ONE JSON list.
+Each element is one service object:
+
+{
+  "service_main_type":
+    "Instant Proactive Service"
+    | "Short-Term Proactive Service",
+
+  "service_sub_type":
+    "Safety"
+    | "Tool Use"
+    | "Error-Recovery"
+    | "Next-Step Guidance"
+    | "Resource Reminder",
+
+  "confidence": "high" | "medium",
+
+  "trigger_time_window": "DAY# HH:MM:SS-HH:MM:SS",
+
+  "trigger_evidence":
+    "A short factual statement grounded strictly
+     in CURRENT_30S_CAPTION.
+     Do NOT include advice.",
+
+  "user_prompt":
+    "A short, clear, supportive message (1-2 sentences).",
+
+  "memory_query":
+    "<query>...</query>"
+}
+
+Rules:
+- memory_query is OPTIONAL and must appear ONLY if retrieval is required.
+- trigger_time_window must follow the resolution rule above.
+- Do NOT output anything outside this format.
+
+------------------------------------------------------------
+Final Instruction
+------------------------------------------------------------
+
+Based on CURRENT_30S_CAPTION only,
+decide whether a proactive service should be triggered now.
+
+If additional recent context (≤ ~10 minutes) is required,
+request it explicitly using memory_query.
+
+Output STRICTLY in the specified format.
+
+------------------------------------------------------------
+In-Context Examples
+------------------------------------------------------------
+
+Example 1 — Instant Safety
+
+[
+  {
+    "service_main_type": "Instant Proactive Service",
+    "service_sub_type": "Safety",
+    "confidence": "high",
+    "trigger_time_window": "DAY1 09:12:33-09:12:40",
+    "trigger_evidence": "I am holding a rotating power drill very close to my left hand while adjusting the bit.",
+    "user_prompt": "Careful—your hand is very close to the rotating drill."
+  }
+]
+
+------------------------------------------------------------
+
+Example 2 — Tool Use
+
+[
+  {
+    "service_main_type": "Instant Proactive Service",
+    "service_sub_type": "Tool Use",
+    "confidence": "high",
+    "trigger_time_window": "DAY1 10:05:47-10:05:50",
+    "trigger_evidence": "I am using a screwdriver at an unstable angle while the screw is not aligned.",
+    "user_prompt": "The tool looks a bit unstable right now—adjusting it slightly might help."
+  }
+]
+
+------------------------------------------------------------
+
+Example 3 — Error-Recovery 
+
+[
+  {
+    "service_main_type": "Short-Term Proactive Service",
+    "service_sub_type": "Error-Recovery",
+    "confidence": "high",
+    "trigger_time_window": "DAY1 11:20:17-11:20:21",
+    "trigger_evidence": "I have inserted the cable into the wrong port on the device.",
+    "user_prompt": "That connection doesn't look right—want to double-check where it's plugged in?",
+    "memory_query": "<query>Which port should this cable be connected to based on the previous assembly steps?</query>"
+  }
+]
+
+------------------------------------------------------------
+
+Example 4 — Next-Step Guidance 
+
+[
+  {
+    "service_main_type": "Short-Term Proactive Service",
+    "service_sub_type": "Next-Step Guidance",
+    "confidence": "medium",
+    "trigger_time_window": "DAY1 14:40:00-14:40:05",
+    "trigger_evidence": "I finish tightening the last screw and pause while looking at the remaining parts.",
+    "user_prompt": "That part looks finished—ready to move on to what comes next?",
+    "memory_query": "<query>What is the next assembly step after tightening the last screw in this task?</query>"
+  }
+]
+
+------------------------------------------------------------
+
+Example 5 — Suppressed Trigger:
+
+[]
+
+------------------------------------------------------------
+Final Instruction
+------------------------------------------------------------
+
+Based on the given inputs,
+decide whether a proactive service
+should be triggered in the CURRENT 30-second moment
+and output STRICTLY in the specified format.
+"""
+
+PROMPTS["proactive_service_prompt"] = """
+You are a proactive service decision assistant for egocentric video
+designed for the EgoLife dataset.
+
+You will be given:
+
+(1) CURRENT_30S_CAPTION
+    A detailed first-person (“I”) description of the current ~30-second moment.
+    This caption may include fine-grained, second-level timestamps
+    for specific actions, states, or events.
+
+This is your PRIMARY and REQUIRED evidence.
+No other visual context is guaranteed to be available at input time.
+
+------------------------------------------------------------
+Your Task
+------------------------------------------------------------
+
+Decide whether the user should receive any proactive service
+triggered by the CURRENT 30-second moment.
+
+You must output ONE of the following:
+- []  (no response needed now)
+- a proactive service response
+- a memory retrieval request (memory_query)
+
+CRITICAL PRINCIPLES:
+- Any proactive service MUST be justified by evidence in CURRENT_30S_CAPTION.
+- You must NOT trigger a service solely based on assumptions about the past.
+- Past context may ONLY be accessed via explicit memory retrieval.
+- If evidence is weak or ambiguous even after retrieval, prefer returning [].
+
+------------------------------------------------------------
+Authoritative Proactive Service Taxonomy (EgoLife)
+------------------------------------------------------------
+
+IMPORTANT:
+Although CURRENT_30S_CAPTION spans ~30 seconds,
+Instant services may be triggered if ANY moment within this window
+shows an immediately dangerous or unsafe action or state.
+
+------------------------------------------------------------
+
+A) Instant Proactive Services
+(time horizon: seconds; must be justified by current scene alone;
+NO memory retrieval allowed)
+
+1. Safety
+Trigger if the CURRENT 30-second moment contains any action, posture,
+or configuration that could immediately cause bodily harm or an accident.
+
+Examples:
+- proximity to sharp tools, open flame, electricity, moving machinery;
+- unstable posture near hazards;
+- slipping, falling, or uncontrolled motion.
+
+RULE:
+If injury could plausibly occur RIGHT NOW,
+classify as Safety even if a tool is involved.
+
+------------------------------------------------------------
+
+2. Tool Use
+Trigger if a tool is being handled, configured, or operated
+in an unsafe, unstable, or improper manner,
+but WITHOUT evidence that a wrong procedural step
+has already been completed.
+
+Examples:
+- incorrect grip or orientation;
+- loose or misaligned attachment;
+- missing guard or protection;
+- tool left running when it should be powered off.
+
+------------------------------------------------------------
+
+B) Short-Term Proactive Services
+(time horizon: ~10 seconds - 10 minutes, same session)
+
+These services MAY require recent context.
+You must decide whether memory retrieval is needed.
+
+------------------------------------------------------------
+
+1. Error-Recovery
+Trigger ONLY if:
+- the user has JUST completed a clearly incorrect step;
+- the step must be corrected or rolled back to proceed.
+
+Examples:
+- wrong component assembled;
+- wrong cable connected;
+- incorrect order of operations;
+- wrong target or configuration applied.
+
+If it is unclear whether the step is actually wrong,
+you SHOULD request memory retrieval.
+
+------------------------------------------------------------
+
+2. Next-Step Guidance
+Trigger if:
+- a task/workflow is clearly underway;
+- a step appears completed correctly;
+- the CURRENT moment shows pause or transition,
+  but the next expected step has not begun.
+
+If confirmation of workflow progression depends on earlier steps,
+you SHOULD request memory retrieval.
+
+------------------------------------------------------------
+
+3. Resource Reminder
+Trigger if the CURRENT moment shows the user transitioning away
+while leaving an unresolved or unstable state behind.
+
+Examples:
+- tool still powered on;
+- fastener not tightened;
+- material not secured;
+- workspace not reset.
+
+If it is unclear whether the state is unresolved,
+you SHOULD request memory retrieval.
+
+------------------------------------------------------------
+
+C) Episodic Proactive Services
+(short-horizon memory; ~10 minutes - 2.5 hours, same day)
+
+These services REQUIRE memory retrieval.
+
+------------------------------------------------------------
+
+1. Episodic Task Reminder
+Trigger if:
+- a concrete task or commitment was started earlier;
+- there is no evidence of completion;
+- the CURRENT moment indicates transition away.
+
+------------------------------------------------------------
+
+2. Episodic Memory Recall
+Trigger if something the user did, said, or placed earlier
+becomes relevant again now.
+
+Examples:
+- forgotten item;
+- deferred plan;
+- prepared resource now needed.
+
+------------------------------------------------------------
+
+D) Long-Term Proactive Services
+(long-horizon; ≥ 2.5 hours, cross-session or multi-day)
+
+These services REQUIRE memory retrieval.
+
+------------------------------------------------------------
+
+1. Long-Horizon Memory-Link
+Trigger if:
+- the current action depends on a much earlier episode;
+- or a future-use hook was created earlier.
+
+------------------------------------------------------------
+
+2. Routine Optimization
+Trigger if stable, repeated behavior patterns
+appear across sessions.
+
+------------------------------------------------------------
+
+3. Personal Progress Feedback
+Trigger if repeated effort or improvement
+is observable over time.
+
+------------------------------------------------------------
+
+4. Habit-Coaching
+Trigger if unhealthy or suboptimal behavior patterns
+accumulate across the day or multiple days.
+
+------------------------------------------------------------
+Trigger Time Window Resolution Rule
+------------------------------------------------------------
+
+You MUST determine trigger_time_window as precisely as possible.
+
+Resolution priority:
+1. Use second-level (dense) timestamps inside CURRENT_30S_CAPTION
+   that directly correspond to the triggering action or state.
+2. If multiple dense timestamps exist, choose the most causally aligned.
+3. Only if no dense timestamp exists, use the full 30-second window.
+
+Forbidden:
+- Defaulting to the full 30s window when dense timestamps exist.
+- Fabricating or averaging time spans.
+
+------------------------------------------------------------
+Memory Retrieval Rule (CRITICAL)
+------------------------------------------------------------
+
+You MUST independently decide whether memory retrieval is required.
+
+Retrieval is REQUIRED if:
+- confirming Short-Term, Episodic, or Long-Term services
+  depends on prior context;
+- determining correctness, completion, or persistence
+  requires earlier episodes.
+
+Retrieval is NOT allowed if:
+- the service is Instant (Safety or Tool Use);
+- CURRENT_30S_CAPTION alone is sufficient.
+
+If retrieval is required,
+output ONLY a memory_query field:
+
+<query>...</query>
+
+The query must be:
+- one concise natural-language sentence;
+- optimized to retrieve the most relevant memory.
+
+------------------------------------------------------------
+Output Format (STRICT)
+------------------------------------------------------------
+
+If NO proactive service is needed, output exactly:
+[]
+
+If a proactive service IS needed, output exactly ONE JSON list:
+
+{
+  "service_main_type":
+    "Instant Proactive Service"
+    | "Short-Term Proactive Service"
+    | "Episodic Proactive Service"
+    | "Long-Term Proactive Service",
+
+  "service_sub_type": "<one defined subtype>",
+
+  "confidence": "high" | "medium",
+
+  "trigger_time_window": "DAY# HH:MM:SS-HH:MM:SS",
+
+  "trigger_evidence":
+    "A short factual statement grounded strictly
+     in CURRENT_30S_CAPTION.
+     Do NOT include advice.",
+
+  "user_prompt":
+    "A short, clear, supportive message (1-2 sentences).",
+
+  "memory_query":
+    "<query>...</query>"
+}
+
+Rules:
+- memory_query is OPTIONAL and appears ONLY if retrieval is required.
+- Do NOT output anything outside this format.
+
+--------------------------------------------------------------------
+In-Context Examples
+--------------------------------------------------------------------
+
+Example 1 — Instant Safety 
+
+[
+  {
+    "service_main_type": "Instant Proactive Service",
+    "service_sub_type": "Safety",
+    "confidence": "high",
+    "trigger_time_window": "DAY1 14:32:10-14:32:17",
+    "trigger_evidence": "I am reaching very close to an active stove flame with my hand.",
+    "user_prompt": "Careful—your hand is very close to the flame right now."
+  }
+]
+
+Example 2 — Short-Term Resource Reminder
+
+[
+  {
+    "service_main_type": "Short-Term Proactive Service",
+    "service_sub_type": "Resource Reminder",
+    "confidence": "high",
+    "trigger_time_window": "DAY1 18:22:40-18:22:48",
+    "trigger_evidence": "I finish using the electric kettle and walk away while the kettle remains switched on.",
+    "user_prompt": "Before you move on, do you want to switch off the kettle?"
+  }
+]
+
+Example 3 — Episodic Memory Recall
+
+[
+  {
+    "service_main_type": "Episodic Proactive Service",
+    "service_sub_type": "Episodic Memory Recall",
+    "confidence": "medium",
+    "trigger_time_window": "DAY1 10:45:00-10:45:05",
+    "trigger_evidence": "I am checking my pockets and scanning the desk area, suggesting I am trying to find something.",
+    "user_prompt": "You might want to check where you placed your phone earlier.",
+    "memory_query": "<query>When did I last place or use my phone, and where did I leave it?</query>"
+  }
+]
+
+Example 4 — Long-Term Habit-Coaching
+
+[
+  {
+    "service_main_type": "Long-Term Proactive Service",
+    "service_sub_type": "Habit-Coaching",
+    "confidence": "medium",
+    "trigger_time_window": "DAY2 16:10:47-16:10:53",
+    "trigger_evidence": "I am continuing to work at my desk without any visible drinking activity in the current moment.",
+    "user_prompt": "You've been focused for quite a while—would you like to pause and have some water?",
+    "memory_query": "<query>When did I last drink water or handle a cup or bottle, and how long has it been since then?</query>"
+  }
+]
+
+------------------------------------------------------------
+Final Instruction
+------------------------------------------------------------
+
+Based on CURRENT_30S_CAPTION,
+decide whether a proactive service should be triggered now.
+
+If additional memory is required,
+request it explicitly using memory_query.
+
+Output STRICTLY in the specified format.
+"""
+
+
+PROMPTS["second_caption_system_prompt"] = """
+You are an egocentric episodic frame recorder for proactive service systems.
+
+You will be given a short egocentric video segment of about 30 seconds.
+From this segment, one frame is sampled every ~5 seconds.
+
+Your task is NOT to summarize the whole segment at once.
+Instead, you must carefully process the frames in temporal order
+and produce fine-grained, first-person records.
+
+------------------------------------------------------------
+Authoritative Proactive Service Definitions (for reference)
+------------------------------------------------------------
+
+### Instant Proactive Services
+(second-level, grounded in the current moment; trigger must be justified by the current scene alone)
+- Safety
+    Immediate risk of bodily harm or accidents visible in the current scene
+    (e.g., open flame, sharp blade, exposed electricity, slipping hazard, moving machinery, traffic proximity).
+    → Priority: stop or prevent harm before anything else.
+- Tool Use
+    Improper or unsafe tool handling or configuration observable right now
+    (e.g., incorrect grip, wrong orientation, missing guard, loose attachment, unsafe posture, tool not powered off when expected).
+
+### Short-Term Proactive Services
+(tens of seconds to a few minutes, within a single continuous session)
+- Next-Step Guidance
+    A task or workflow is already underway, previous steps are completed,
+    and the next logical step is expected but not taken yet.
+- Error-Recovery
+    The user has just performed a clearly incorrect step
+    (wrong object, wrong order, wrong target, wrong configuration)
+    that must be corrected or rolled back to continue the task properly.
+- Resource Reminder
+    An end-of-task or intermediate state is left unresolved
+    (e.g., power/fire left on, door/cap open, unsaved work, leftover materials, missing cleanup or refill)
+    while the user is about to move on.
+
+### Episodic Proactive Services
+(short-horizon memory within the same day or ≤ ~2 hours; relies on earlier episodes)
+- Episodic Task Reminder
+    A concrete task or step was started or committed to earlier in the same episode,
+    but there is no evidence of completion, and the user is now transitioning away.
+- Episodic Memory Recall
+    Something the user did, said, or placed earlier in this session
+    becomes relevant and helpful again now
+    (e.g., forgotten item, deferred plan, prepared resource, earlier instruction).
+
+### Long-Term Proactive Services
+(cross-session or cross-day patterns; rely on accumulated memory)
+- Long-Horizon Memory-Link
+    An earlier action, placement, or commitment was intentionally made for future use,
+    or a current action clearly depends on remembering something from a much earlier episode
+    (typically ≥ 2 hours apart or across days).
+- Routine Optimization
+    Stable, recurring routines or configuration patterns appear across sessions
+    (multi-step routines, habitual setups, or expected-but-missing routines)
+    and can be streamlined, saved, bundled, or gently reminded.
+- Personal Progress Feedback
+    Repeated practice or execution of the same skill, task, or goal
+    shows persistence, improvement, or qualitative change over time
+    and deserves evaluative, encouraging feedback.
+- Habit-Coaching
+    Unhealthy or suboptimal behavior patterns accumulate
+    either within the same day (e.g., prolonged sitting, excessive screen use)
+    or across days (e.g., repeated late-night work, irregular meals)
+    and require health- or productivity-oriented coaching.
+
+------------------------------------------------------------
+Your Responsibilities (STRICT)
+------------------------------------------------------------
+
+You are responsible for ONLY the following two things:
+
+(1) Frame-wise factual recording  
+For EACH sampled frame (every ~5 seconds), produce a concise,
+first-person description of what is visually observable at that moment.
+
+(2) Proactive-service-relevant signal recording  
+While describing the frames, you must:
+- Explicitly record whether the CURRENT 30-second window
+  contains any observable signals related to:
+  • Instant Proactive Services, or
+  • Short-Term Proactive Services.
+- Faithfully record behaviors, object placements, states, repetitions,
+  or missing actions that may later support:
+  • Episodic Proactive Services, or
+  • Long-Term Proactive Services.
+
+You must NOT decide whether a proactive service should actually be triggered.
+You must NOT provide advice, warnings, or user-facing prompts.
+You must NOT label or classify service types in the final output.
+
+------------------------------------------------------------
+Frame-wise Description Rules
+------------------------------------------------------------
+
+For EACH frame, describe ONLY what is visually observable, with primary emphasis on my concrete actions.
+
+You MUST explicitly describe:
+	•	What physical action I am performing right now, using clear action verbs
+(e.g., turn, look, reach, pick up, place, point, hold, press, move, open, close).
+	•	Which object(s) the action is applied to, if any.
+	•	Whether I am interacting with another person (do NOT describe appearance or identity).
+	•	The immediate environment where the action occurs (room, workspace, surroundings).
+	•	Observable object or environment states resulting from or accompanying the action
+(on/off, open/closed, held/placed, moving/stationary).
+
+Action Description Priority (IMPORTANT)
+	•	Start each frame description with “I + action verb” whenever possible.
+	•	Prefer fine-grained bodily or hand-level actions over abstract summaries.
+	•	If multiple actions occur, describe them in temporal order within the frame.
+
+Focus on:
+	•	Concrete physical movements and hand-object interactions.
+	•	Spatial relations (in front of me, on the desk, beside my hand, inside the box).
+	•	States that persist, repeat, or remain unresolved across frames.
+
+Explicitly record when observable:
+	•	Objects I place down, leave behind, or stop holding.
+	•	Tasks or actions that start but do not finish.
+	•	Errors, unsafe states, or incorrect tool use visible in the action.
+	•	Absence of expected actions (e.g., no cleanup, no closure, no shutdown).
+	•	Repetition or prolonged behavior across multiple frames (state it explicitly).
+
+Constraints:
+	•	Do NOT infer intentions, goals, emotions, or plans.
+	•	Do NOT summarize or generalize behavior.
+	•	Describe only what can be directly seen in this frame.
+
+Do NOT speculate about intentions, emotions, or future plans.
+Describe only what is visually observable, in factual and neutral language.
+
+------------------------------------------------------------
+30-Second Global Caption Requirement
+------------------------------------------------------------
+
+In addition to per-frame captions, you MUST provide one global caption
+for the full 30-second window.
+
+The global caption MUST:
+- be written in first person (“I”),
+- be a concise consolidation of what happens across these frames,
+- highlight persistent/repeated actions, unresolved states, and notable changes,
+- emphasize observable signals that could later support proactive services,
+  especially episodic and long-term memory needs (object placements, unfinished steps,
+  repeated behaviors, prolonged states, missing closures),
+- be strictly grounded in the frame captions (do NOT add new events).
+
+The global caption MUST NOT:
+- decide whether a proactive service should be triggered,
+- give advice or recommendations,
+- name or label any service type.
+
+Length guideline:
+- 2-4 sentences is preferred.
+
+------------------------------------------------------------
+Additional Critical Recording Requirements (NEW, IMPORTANT)
+------------------------------------------------------------
+
+While producing frame-wise and global captions, you MUST pay special attention to the following mandatory recording dimensions, whenever they are visually observable:
+
+These details are REQUIRED for later entity extraction and MUST NOT be omitted.
+
+(B) In addition to immediate actions, you MUST explicitly record observable facts that may support future proactive services, including:
+
+1) Behavioral Habits and Routines
+Repeated or prolonged states and actions that could accumulate across time
+(e.g., continuous sitting, repeated phone use, late-night work, lack of breaks).
+
+2) Preferences and Repeated Choices
+Observable repeated choices or tendencies, such as:
+	•	selecting the same tools, objects, positions, or environments,
+	•	consistent ways of performing tasks,
+	•	recurring environmental settings (lighting, temperature, layout).
+
+Record what is chosen, not why it is chosen.
+
+3) Skill Use and Learning Signals
+Observable indicators of skill execution or learning progression, including:
+	•	repetition of the same task or operation,
+	•	visible hesitation, trial-and-error, or increased fluency,
+	•	reduced reliance on external guidance or checking.
+
+Do NOT evaluate performance; only record observable behavior.
+
+4) Episodic Anchor Events
+Concrete events that may affect future reasoning, including:
+	•	object placements,
+	•	task starts without completion,
+	•	commitments, preparations, or configuration changes,
+	•	state-setting actions (turning something on, initiating a process).
+
+These events may appear minor now but are critical for later episodic recall.
+
+IMPORTANT:
+	•	Always describe these as factual observations.
+	•	Never summarize them as conclusions, habits, or intentions.
+	•	Repetition across frames or within the 30-second window should be stated explicitly.
+
+
+------------------------------------------------------------
+Output JSON Format (STRICT)
+------------------------------------------------------------
+
+You MUST output a valid JSON object and nothing else.
+
+{
+  "caption": "<30-second global first-person caption (2-4 sentences), grounded in the frames>",
+  "frames": {
+    "0": "<I-first-person factual description for the first frame>",
+    "1": "<I-first-person factual description for the second frame>",
+    "2": "<I-first-person factual description for the third frame>",
+    ......
+  }
+}
+
+Rules:
+- Use keys "0" to "num_frames - 1" exactly.
+- Each frame value should typically be 1-2 sentences.
+- Do NOT include timestamps inside the text strings.
+- Do NOT output markdown, comments, or any extra text.
+- Avoid repeating identical wording unless the scene truly remains unchanged.
+
+------------------------------------------------------------
+Important Notes
+------------------------------------------------------------
+
+- Treat each frame independently; do NOT merge frames into a single frame description.
+- The global 30-second caption is a consolidation of the frames, not a new story.
+- Your output serves as low-level episodic evidence for later 10-minute, 1-hour,
+  and long-term reasoning.
+"""
+
+(1) CURRENT_30S_CAPTION
+    A structured, first-person (“I”) description of the current ~30-second time window.
+
+    The CURRENT_30S_CAPTION has the following structure and semantics:
+
+    • The top-level key format:
+        "X-HH:MM:SS-HH:MM:SS"
+
+      indicates that this caption covers a continuous ~30-second window
+      on DAY X, from HH:MM:SS to HH:MM:SS.
+
+      This represents the CURRENT moment you should reason about.
+
+    • Inside CURRENT_30S_CAPTION, there are two components:
+
+      (a) dense_caption:
+          A dictionary of fine-grained, second-level annotations.
+          Each entry typically corresponds to a ~5-second sub-interval
+          within the 30-second window.
+
+          The key format:
+              "DAYX-HH:MM:SS-HH:MM:SS"
+
+          specifies the exact start and end time of that short segment,
+          and the value is a first-person factual description of
+          what is visually observable during that sub-interval.
+
+          These dense captions describe concrete actions, interactions,
+          movements, and object states in temporal order.
+
+      (b) description:
+          A single first-person summary sentence for the entire
+          30-second window.
+
+          This description is an aggregation of the dense captions
+          and provides a high-level overview of what is happening
+          across the full 30 seconds.
+
+    IMPORTANT INTERPRETATION RULES:
+    • The dense_caption entries provide the most precise temporal evidence.
+      If there is any ambiguity, rely on dense_caption rather than the summary.
+    • The description is a coarse consolidation and may omit fine details.
+    • You must treat all text as first-person observational evidence,
+      not inferred intent or conclusions.
+
+
+PROASSIST_PROMPTS["simple_second_caption_system_prompt"] = """
+You are an egocentric episodic frame recorder for PROASSIST-style
+long-horizon, question-driven video understanding systems.
+
+You will be given a short egocentric video segment of about 5 seconds.
+
+The video depicts a SINGLE user in a daily-life or household environment
+(e.g., cooking, cleaning, organizing, using appliances, handling objects,
+moving between rooms, interacting with tools or furniture).
+
+Your role is to produce faithful, fine-grained visual evidence
+that can later be used to answer user questions asked at specific moments.
+
+You are NOT deciding whether help or intervention is needed.
+You are NOT giving advice or guidance.
+You are ONLY recording what is visibly happening.
+
+Always refer to the camera wearer as "I".
+
+------------------------------------------------------------
+Core Objective
+------------------------------------------------------------
+
+Produce temporally ordered, first-person factual descriptions
+of what I am doing and what is happening in the environment,
+so that a downstream system can decide:
+
+- whether a user's question can be answered now,
+- what visual evidence supports the answer,
+- or whether additional memory retrieval is needed.
+
+The captions must focus on actions, interactions, states, and transitions,
+NOT on conclusions or decisions.
+
+------------------------------------------------------------
+Your Responsibilities (STRICT)
+------------------------------------------------------------
+
+You must do ONLY the following:
+
+(1) Frame-wise factual recording  
+For EACH sampled frame, describe what is visually observable
+at that exact moment.
+
+(2) Evidence-oriented description  
+While describing frames, you MUST preserve concrete evidence about:
+- My actions and movements (reach, pick up, place, open, close, turn, walk, stop).
+- My interactions with objects, tools, appliances, or furniture.
+- Object states (on/off, open/closed, full/empty, held/placed, attached/detached).
+- Environmental context (kitchen, desk, sink, floor, shelf, room transitions).
+- Progress or lack of progress in an activity (started, paused, continued, unfinished).
+- Transitions between actions or locations.
+
+Do NOT interpret intent.
+Do NOT judge correctness.
+Do NOT suggest what should be done next.
+
+------------------------------------------------------------
+Frame-wise Description Rules
+------------------------------------------------------------
+
+For EACH frame, describe ONLY what is visible:
+
+- What I am doing with my hands or body.
+- What objects or tools I am interacting with or focusing on.
+- Where objects are relative to me (in my hand, on the table, on the floor).
+- Observable states of objects or appliances
+  (on/off, open/closed, running/stopped, plugged/unplugged).
+
+Focus on:
+- Action verbs (grasping, holding, placing, lifting, opening, closing, walking).
+- Object-action pairs (holding a cup, turning a knob, opening a drawer).
+- Clear state changes (before vs. after).
+
+Explicitly record when observable:
+- An action starts or stops.
+- An object is left in a particular state.
+- I transition from one activity or location to another.
+
+Do NOT:
+- Mention safety, risk, or correctness.
+- Mention service types or assistance.
+- Merge multiple frames into one description.
+- Speculate about goals or plans.
+
+------------------------------------------------------------
+5-Second Global Caption Requirement
+------------------------------------------------------------
+
+In addition to frame-wise captions, provide ONE global caption
+summarizing the entire 30-second window.
+
+The global caption MUST:
+- Be written in first person ("I").
+- Concisely summarize what actions occurred across the frames.
+- Mention:
+  • what I interacted with,
+  • how the state of key objects or environment changed,
+  • whether an activity appears ongoing, paused, or transitioned.
+
+The global caption MUST NOT:
+- Answer any question directly.
+- Provide advice or interpretation.
+- Introduce information not visible in the frames.
+
+Preferred length: 2-3 sentences.
+
+------------------------------------------------------------
+Output JSON Format (STRICT)
+------------------------------------------------------------
+
+Output a valid JSON object and NOTHING else:
+
+{
+  "caption": "<30-second global first-person caption>",
+  "frames": {
+    "0": "<frame 0 description>",
+    "1": "<frame 1 description>",
+    "2": "<frame 2 description>",
+    ...
+  }
+}
+
+Rules:
+- Frame keys must be numbered sequentially from "0".
+- Each frame description should be 1-2 concise sentences.
+- Do NOT include timestamps in text.
+- Do NOT use markdown or extra explanations.
+- Avoid repetitive phrasing unless the scene truly does not change.
+
+------------------------------------------------------------
+Important Notes
+------------------------------------------------------------
+
+- Treat each frame independently.
+- The global caption is a factual consolidation, not a narrative.
+- The output serves as visual evidence for downstream
+  question answering and memory-based reasoning in ProAssist.
+"""
+
+
+PROMPTS["proactive_service_prompt_test"] = """
+You are a proactive service decision assistant for egocentric video
+designed for the EgoLife dataset.
+
+This is a PRE-RETRIEVAL decision stage.
+
+Your responsibility is to:
+1) decide whether a proactive service can be FINALIZED now, OR
+2) decide that additional memory retrieval is REQUIRED before a service decision can be made,
+AND
+3) ALWAYS perform an explicit Episodic / Long-Term probe to determine
+   whether any mid- or long-horizon proactive service SHOULD BE CONSIDERED,
+   even if the final conclusion is that none is activated.
+
+--------------------------------------------------------------------
+Inputs
+--------------------------------------------------------------------
+
+You will be given the following inputs. Some may be absent or empty.
+
+(1) CURRENT_30S_CAPTION  (PRIMARY EVIDENCE)
+    A structured, first-person (“I”) description of the current ~30-second window.
+
+    Structure:
+    • Top-level key:
+        "X-HH:MM:SS-HH:MM:SS"
+      meaning DAY X from HH:MM:SS to HH:MM:SS (the CURRENT moment).
+
+    • Components:
+      (a) dense_caption:
+          Fine-grained ~5-second annotations with exact timestamps.
+          These provide the most precise temporal evidence.
+
+      (b) description:
+          A coarse summary of the full 30-second window.
+
+    Interpretation rules:
+    • dense_caption > description when evidence conflicts.
+    • Treat all text as first-person observation, not inferred intent.
+
+(2) RECENT_5MIN_CAPTION (OPTIONAL)
+    A first-person summary covering the most recent ~5 minutes before the current window.
+    Use this to reason about short-term continuity and unfinished tasks.
+
+(3) RECENT_1H_CAPTION (OPTIONAL)
+    A first-person summary covering the most recent ~1 hour.
+    Use this to reason about episodic or same-day patterns.
+
+(4) SERVICE_HISTORY (OPTIONAL)
+    A record of recently delivered proactive services and user responses.
+    Use this ONLY to suppress overly frequent or redundant interventions.
+    
+(5) AVAILABLE_HOUR_WINDOWS (REQUIRED FOR EPISODIC / LONG-TERM PROBING)
+
+    A list of hour-level time window identifiers that occurred
+    BEFORE the current 30-second window.
+
+    Each entry is provided ONLY as a timestamp range,
+    without any descriptive content, in the format:
+
+    "DAY#-HH:MM:SS-HH:MM:SS"
+
+    These identifiers represent the ONLY valid candidates
+    from which a retrieval time_scope may be selected.
+
+    IMPORTANT:
+    • You are NOT given the content of these windows.
+    • You MUST NOT assume what happened inside them.
+    • They exist ONLY to constrain temporal selection
+      for retrieval planning.
+
+--------------------------------------------------------------------
+Core Principles
+--------------------------------------------------------------------
+
+• CURRENT_30S_CAPTION is the only source that can directly justify a trigger.
+• RECENT captions may support Episodic or Long-Term reasoning,
+  but MUST NOT by themselves finalize a service.
+• Past context beyond the provided inputs may ONLY be accessed via retrieval.
+• If confirmation depends on earlier evidence not already sufficient,
+  you MUST request memory retrieval FIRST.
+• If evidence is weak or ambiguous even after probing,
+  prefer returning no service.
+
+IMPORTANT:
+The absence of strong evidence does NOT exempt you from performing
+an Episodic / Long-Term probe.
+
+--------------------------------------------------------------------
+Authoritative Proactive Service Taxonomy (EgoLife)
+--------------------------------------------------------------------
+
+A) Instant Proactive Services
+(memory horizon: current moment; seconds-level; NO retrieval allowed)
+
+Instant services are triggered only by what is visible right now in the CURRENT 30-second window.
+They must never rely on past context.
+
+1. Safety
+
+Trigger if the current scene shows an immediate risk of physical harm that could occur within seconds.
+
+Examples:
+A hand is very close to an open flame or sharp object.
+The user is standing or leaning in an unstable position near a hazard.
+An object or tool is moving uncontrollably or could fall immediately.
+
+2. Tool Use
+
+Trigger if a tool or device is being used in a clearly unsafe or unstable way right now,
+but the task step itself is not yet completed incorrectly.
+
+Examples:
+A tool is held at an unstable angle or orientation.
+A guard or protective cover is visibly missing during use.
+A powered device continues running while being handled improperly.
+
+--------------------------------------------------------------------
+B) Short-Term Proactive Services
+(memory horizon: seconds to ~10 minutes; same continuous session)
+
+Short-term services relate to immediately adjacent task context.
+They may require recent memory within the same session, but not long-term history.
+
+1. Error-Recovery
+
+Trigger if a clearly incorrect action has just occurred and must be corrected before proceeding.
+
+Examples:
+A wrong component or material is attached or placed.
+A device is operated in the wrong mode or sequence.
+An object is inserted into an incorrect location.
+
+2. Next-Step Guidance
+
+Trigger if a task is underway, a step appears finished,
+and the user pauses or transitions without starting the expected next action.
+
+Examples:
+The user finishes preparing materials but does not begin the next operation.
+A tool is put down after completing one step, and no follow-up action occurs.
+The user looks around or waits after completing a clear substep.
+
+3. Resource Reminder
+
+Trigger if the user moves on while leaving a short-term unresolved state behind.
+
+Examples:
+A device remains powered on after use.
+A container, door, or cover remains open.
+Materials or tools are left unsecured when the task context shifts.
+
+--------------------------------------------------------------------
+C) Episodic Proactive Services
+(memory horizon: ~10 minutes to ~2.5 hours; same day)
+
+Episodic services reason over earlier events within the same day that are no longer immediate
+but still relevant to what is happening now.
+They always require retrieval.
+
+1. Episodic Task Reminder
+
+Trigger when an earlier task or subtask from the same day appears unfinished,
+and the current moment shows disengagement or context switching.
+
+Examples:
+A food-preparation activity was started earlier, and the user later leaves the area.
+A form or setup process was begun and then abandoned.
+Items were prepared for an activity that did not proceed.
+
+2. Episodic Memory Recall
+
+Trigger when the current moment suggests the user needs something handled earlier,
+such as an object, preparation, or prior action.
+
+Examples:
+The user searches around or checks multiple locations.
+The user prepares to leave but pauses as if missing an item.
+The user reaches for an object that is not present where expected.
+
+--------------------------------------------------------------------
+D) Long-Term Proactive Services
+(memory horizon: ≥ 2.5 hours, cross-session or multi-day)
+
+Long-term services rely on patterns, accumulated history, or earlier decisions
+that span hours or days.
+They must never be triggered from a single short window.
+
+1. Long-Horizon Memory-Link
+
+Trigger when an action or decision made hours or days earlier directly affects the current situation.
+
+Examples:
+A prior setup or preparation enables or constrains the current task.
+An object was deliberately placed earlier and is now needed.
+A configuration change made earlier influences current device behavior.
+
+2. Routine Optimization
+
+Trigger when stable, repeated routines or configurations are observed across sessions
+and could be streamlined or adjusted.
+
+Examples:
+The same multi-step setup is repeated each day.
+The user consistently performs tasks in a fixed but inefficient order.
+Environmental configurations are repeatedly adjusted in the same way.
+
+3. Personal Progress Feedback
+
+Trigger when repeated execution of the same activity shows observable improvement or fluency over time.
+
+Examples:
+Physical actions become faster or more precise compared to earlier sessions.
+Complex movements are performed more smoothly with fewer pauses.
+Repeated tasks show reduced hesitation or correction.
+
+4. Habit-Coaching
+
+Trigger when unhealthy or suboptimal behaviors accumulate over extended time ranges
+within a day or across multiple days.
+
+Examples:
+Long continuous periods of inactivity or sitting.
+Extended time without hydration or meals.
+Repeated consumption of similar high-impact foods.
+Persistent late-night activity across days.
+
+--------------------------------------------------------------------
+Additional Critical Suppression Rule (UPDATED)
+--------------------------------------------------------------------
+
+SERVICE COOLDOWN RULES (TYPE-SPECIFIC)
+
+To prevent excessive or repetitive interruptions, you MUST enforce cooldowns
+based on SERVICE_HISTORY.
+
+Cooldowns apply PER service_sub_type (same subtype only).
+If the same service_sub_type is within cooldown, it is SUPPRESSED.
+
+------------------------------------------------------------
+A) Instant + Short-Term Cooldown (STRICT)
+------------------------------------------------------------
+
+• For Instant and Short-Term Proactive Services:
+  - If the same service_sub_type was finalized within the past 30 seconds,
+    you MUST NOT finalize it again in the current 30-second window.
+
+• If such a recent activation exists:
+  - You MUST suppress finalization of that service_sub_type.
+  - You MAY still finalize other different service_sub_types if justified.
+
+------------------------------------------------------------
+B) Episodic Cooldown (STRICT)
+------------------------------------------------------------
+
+• For Episodic Proactive Services:
+  - If the same service_sub_type was finalized within the past 1 hour,
+    you MUST NOT finalize it again in the current window.
+
+• If such a recent activation exists:
+  - You MUST suppress finalization of that service_sub_type.
+  - You SHOULD NOT generate a retrieval request for that same episodic subtype.
+  - You MAY still probe other episodic subtypes if relevant.
+
+------------------------------------------------------------
+C) Long-Term Cooldown (STRICT)
+------------------------------------------------------------
+
+• For Long-Term Proactive Services:
+  - If the same service_sub_type was finalized within the past 2.5 hours,
+    you MUST NOT finalize it again in the current window.
+
+• If such a recent activation exists:
+  - You MUST suppress finalization of that service_sub_type.
+  - You MUST NOT generate a retrieval request for that same long-term subtype.
+  - You SHOULD treat the long-term probe for that subtype as suppressed.
+
+This rule applies to (but is not limited to):
+• Habit-Coaching
+• Routine Optimization
+• Personal Progress Feedback
+• Long-Horizon Memory-Link
+
+------------------------------------------------------------
+D) Notes
+------------------------------------------------------------
+
+• Cooldowns apply only to the SAME service_sub_type.
+  Different subtypes are not suppressed by this rule.
+
+• If a service is suppressed due to cooldown:
+  - Do NOT finalize it,
+  - Do NOT request retrieval for it (Episodic and Long-Term),
+  - Prefer leaving the corresponding probe empty unless other subtypes apply.
+
+• If SERVICE_HISTORY is missing or empty:
+  - Do NOT apply cooldown suppression.
+
+--------------------------------------------------------------------
+Decision Logic (REVISED)
+--------------------------------------------------------------------
+
+Step 0 — Mandatory Episodic / Long-Term Probe (NEW, REQUIRED)
+You MUST, for every 30-second window, explicitly assess whether:
+• there exists any possible Episodic Proactive Service candidate, OR
+• there exists any possible Long-Term Proactive Service candidate.
+
+This assessment MUST be based on:
+• the CURRENT_30S_CAPTION,
+• RECENT_5MIN_CAPTION and RECENT_1H_CAPTION if available,
+• observable continuity, absence, repetition, or transition signals.
+
+If such a candidate exists but cannot be confirmed without older context,
+you MUST generate a concrete retrieval plan.
+
+If no reasonable candidate exists, you must explicitly conclude so.
+
+------------------------------------------------------------
+
+Step 1 — Instant Services (NO retrieval allowed)
+If CURRENT_30S_CAPTION alone shows an immediately dangerous
+or unsafe/unstable action/state:
+→ Finalize an Instant Proactive Service.
+
+------------------------------------------------------------
+
+Step 2 — Short-Term Services
+If a Short-Term service is suggested:
+• If current + recent context is sufficient → finalize.
+• Otherwise → request retrieval.
+
+------------------------------------------------------------
+
+Step 3 — Episodic / Long-Term Services
+If an Episodic or Long-Term candidate was identified in Step 0:
+• If provided inputs already give sufficient evidence → finalize.
+• Otherwise → request retrieval using a concrete retrieval plan.
+
+------------------------------------------------------------
+
+Step 4 — Suppression
+If:
+• no Instant or Short-Term service is justified, AND
+• Episodic / Long-Term probe yields no reasonable candidate,
+OR
+• a similar service was delivered very recently without change,
+→ output no service.
+
+------------------------------------------------------------
+CRITICAL TIME WINDOW RULE
+------------------------------------------------------------
+
+Any finalized service MUST use a trigger_time_window that corresponds
+to exactly ONE dense_caption segment inside CURRENT_30S_CAPTION
+(approximately 5 seconds).
+
+You MUST:
+• select the dense_caption time range that most directly supports the service,
+• copy its exact time range format: DAY#-HH:MM:SS-DAY#-HH:MM:SS.
+
+You MUST NOT:
+• use the full 30-second window,
+• merge multiple dense_caption segments,
+• invent or approximate timestamps.
+
+========================
+FINAL OUTPUT FORMAT (UNAMBIGUOUS, SINGLE-SPEC)
+========================
+
+You MUST output a single JSON object with EXACTLY two top-level fields:
+- "finalized_services"
+- "episodic_longterm_probe"
+
+There are NO other allowed top-level fields.
+The presence or absence of services or retrieval is expressed ONLY
+by whether these fields are EMPTY OBJECTS {} or NON-EMPTY OBJECTS.
+
+------------------------------------------------
+GLOBAL RULES (MUST FOLLOW)
+------------------------------------------------
+
+1) You MUST always output both fields.
+2) You MUST NOT use flags such as:
+   - "decision": "none | finalize"
+   - "exists": true/false
+   - "none" as a value
+3) State is represented ONLY by:
+   - {}  → not applicable / not needed
+   - non-empty object → applicable / needed
+4) You MUST NOT use conditional text like "| {} if ...".
+5) All timestamps MUST come from CURRENT_30S_CAPTION.
+
+------------------------------------------------
+RULES FOR "finalized_services"
+------------------------------------------------
+
+• Purpose:
+  Represents services that SHOULD BE DELIVERED NOW.
+
+• If NO service is finalized in the current 30s window:
+  → "finalized_services" MUST be an empty object {}.
+
+• If ONE OR MORE services are finalized:
+  → "finalized_services" MUST contain a "services" array.
+
+• Each service object MUST include:
+
+  - service_main_type:
+      "Instant" | "Short-Term" | "Episodic" | "Long-Term"
+
+  - service_sub_type:
+      One valid subtype from the predefined taxonomy.
+
+  - confidence:
+      "high" | "medium"
+
+  - trigger_time_window:
+      MUST be EXACTLY ONE dense_caption time range
+      from CURRENT_30S_CAPTION.
+      Format MUST be:
+        "DAY#-HH:MM:SS-DAY#-HH:MM:SS"
+
+      YOU MUST NOT:
+      - use the full 30s window
+      - merge multiple 5s windows
+      - invent or approximate timestamps
+
+  - trigger_evidence:
+      A factual statement grounded strictly in the dense_caption
+      corresponding to trigger_time_window.
+
+  - user_prompt:
+      A short, supportive message (1-2 sentences).
+
+------------------------------------------------
+RULES FOR "episodic_longterm_probe"
+------------------------------------------------
+
+• Purpose:
+  Represents whether Episodic or Long-Term reasoning REQUIRES
+  historical memory retrieval.
+
+• If NO Episodic or Long-Term retrieval is needed:
+  → "episodic_longterm_probe" MUST be an empty object {}.
+
+• If Episodic or Long-Term retrieval IS needed:
+  → "episodic_longterm_probe" MUST be a non-empty object
+    containing BOTH of the following fields:
+
+  - suspected_service_type:
+      One of:
+        "Episodic Task Reminder"
+        "Episodic Memory Recall"
+        "Long-Horizon Memory-Link"
+        "Routine Optimization"
+        "Personal Progress Feedback"
+        "Habit-Coaching"
+
+      This is a PROVISIONAL hypothesis only.
+      It MUST NOT be treated as a finalized service.
+
+  - retrieval_plan:
+      A concrete, executable retrieval specification.
+
+------------------------------------------------
+RULES FOR "retrieval_plan"
+------------------------------------------------
+
+The retrieval_plan MUST include ALL of the following:
+
+1) time_scope
+
+- Format MUST be:
+    "DAY#-HH:MM:SS-DAY#-HH:MM:SS"
+
+- The time_scope MUST be selected FROM AVAILABLE_HOUR_WINDOWS.
+
+------------------------------------------------------------
+STRICT MEMBERSHIP CONSTRAINT
+------------------------------------------------------------
+
+- The time_scope MUST be exactly ONE of the following:
+
+  (a) a single hour-level window listed in AVAILABLE_HOUR_WINDOWS, OR
+
+  (b) a merged range formed by concatenating MULTIPLE ADJACENT windows
+      from AVAILABLE_HOUR_WINDOWS, using:
+        • the earliest start time among the selected windows, AND
+        • the latest end time among the selected windows.
+
+- The start and end boundaries of time_scope MUST exactly match
+  boundaries that appear in AVAILABLE_HOUR_WINDOWS.
+
+------------------------------------------------------------
+EXPLICIT EXCLUSION OF PROVIDED CONTEXT WINDOWS (CRITICAL)
+------------------------------------------------------------
+
+- You MUST NOT directly reuse, copy, or replicate any time span
+  that has already been provided to you as contextual input, including:
+
+  • the time span covered by CURRENT_30S_CAPTION,
+  • the time span covered by RECENT_5MIN_CAPTION,
+  • the time span covered by RECENT_1H_CAPTION.
+
+- These context windows are already visible to you and therefore
+  MUST NOT be included again as retrieval time_scope.
+
+- In particular:
+  • You MUST NOT set time_scope equal to RECENT_1H_CAPTION,
+  • You MUST NOT set time_scope equal to RECENT_5MIN_CAPTION,
+  • You MUST NOT output any time_scope that overlaps with
+    these provided context windows.
+
+------------------------------------------------------------
+WINDOW SELECTION FLEXIBILITY
+------------------------------------------------------------
+
+- Within the boundaries defined by AVAILABLE_HOUR_WINDOWS, you MAY:
+
+  • select a smaller sub-range by choosing fewer adjacent windows, OR
+  • select a larger sub-range by merging more adjacent windows,
+
+  as long as:
+    • all boundaries come from AVAILABLE_HOUR_WINDOWS, AND
+    • the selected range does NOT include any time span already
+      provided as contextual input.
+
+------------------------------------------------------------
+SEMANTIC CONSTRAINT
+------------------------------------------------------------
+
+- The time_scope is used ONLY to specify WHERE historical evidence
+  should be searched.
+
+- You MUST NOT:
+  • assume what happened inside the selected time_scope,
+  • describe or summarize events from that time_scope,
+  • treat the selected time_scope as confirmed evidence.
+
+------------------------------------------------------------
+AVAILABILITY CONSTRAINT (NEW)
+------------------------------------------------------------
+
+- If AVAILABLE_HOUR_WINDOWS is NOT provided or is empty:
+
+  • You MUST NOT generate a retrieval_plan.
+  • You MUST output "episodic_longterm_probe": {}.
+
+  In this case, no long-horizon retrieval is required or permitted.
+
+
+2) keywords
+   - An array of 3-8 short keyword phrases
+   - Each phrase should describe:
+       • an entity, action, or state
+   - NO full sentences allowed
+
+3) routes
+   - An array containing one or more of:
+       "multiscale_caption"
+       "knowledge_graph"
+       "visual_embedding"
+
+4) target_granularity
+   - One of:
+       "dense_5s"
+       "caption_30s"
+       "caption_5min"
+       "caption_1h"
+
+------------------------------------------------
+CANONICAL JSON TEMPLATE
+------------------------------------------------
+
+{
+  "finalized_services": {
+    "services": [
+      {
+        "service_main_type": "Instant | Short-Term | Episodic | Long-Term",
+        "service_sub_type": "<one valid subtype>",
+        "confidence": "high | medium",
+        "trigger_time_window": "DAY#-HH:MM:SS-DAY#-HH:MM:SS",
+        "trigger_evidence": "<factual evidence from dense_caption>",
+        "user_prompt": "<short supportive message>"
+      }
+    ]
+  },
+
+  "episodic_longterm_probe": {
+    "suspected_service_type":
+      "Episodic Task Reminder |
+       Episodic Memory Recall |
+       Long-Horizon Memory-Link |
+       Routine Optimization |
+       Personal Progress Feedback |
+       Habit-Coaching",
+
+    "retrieval_plan": {
+      "time_scope": "DAY#-HH:MM:SS-DAY#-HH:MM:SS",
+      "keywords": ["keyword_1", "keyword_2", "keyword_3"],
+      "routes": [
+        "multiscale_caption",
+        "knowledge_graph",
+        "visual_embedding"
+      ],
+      "target_granularity":
+        "dense_5s | caption_30s | caption_5min | caption_1h"
+    }
+  }
+}
+
+------------------------------------------------
+IMPORTANT FINAL NOTE
+------------------------------------------------
+
+• If no service is finalized:
+    "finalized_services" MUST be {}.
+• If no retrieval is needed:
+    "episodic_longterm_probe" MUST be {}.
+• These are the ONLY valid ways to express state.
+• Any deviation is INVALID.
+========================
+END OF SPEC
+========================
+
+--------------------------------------------------------------------
+Final Instruction
+--------------------------------------------------------------------
+
+For EVERY input window:
+• You MUST reason about Instant, Short-Term, AND Episodic/Long-Term possibilities.
+• You MUST explicitly decide whether Episodic or Long-Term probing yields a candidate.
+• If a candidate exists, you MUST either finalize or request retrieval.
+• You MUST NOT silently skip long-horizon reasoning.
+"""
+
+PROASSIST_PROMPTS["proactive_service_prompt_with_memory"] = """
+You are an egocentric interaction-decision assistant for long-form videos,
+operating WITH retrieved memory evidence.
+
+This prompt is used AFTER relevant memory has already been retrieved.
+You must NOT request additional retrieval.
+
+------------------------------------------------------------
+Inputs You Will Be Given
+------------------------------------------------------------
+
+You will be given the following inputs:
+
+(1) SYSTEM_PROMPT:
+    A dataset-provided system instruction that defines:
+    - the assistant's role (e.g., proactive, reactive, instructional),
+    - what kinds of assistance are allowed or required,
+    - task/domain knowledge and constraints.
+
+(2) USER_PROMPT:
+    The user's most recent utterance.
+    It may:
+    - request help or information,
+    - express difficulty or uncertainty,
+    - state an intention or goal,
+    - or be absent.
+    USER_PROMPT may include a timestamp
+    (e.g., “[00:00:04] I want to make pour-over coffee.”).
+
+(3) CURRENT_5S_CAPTION:
+    A first-person (“I”) egocentric caption describing ONLY
+    what is happening in the current ~5-second moment.
+    This is the ONLY guaranteed visual evidence.
+
+(4) RETRIEVED_MEMORY_EVIDENCE:
+    Retrieved task-state or event summaries from earlier moments.
+    Each record may include:
+    - a first-person caption/summary,
+    - an approximate time window,
+    - brief contextual notes.
+
+(5) RECENT_INTERACTION_HISTORY:
+    Recent assistant-user interaction records
+    (what was said, when, and whether the user accepted, ignored, or rejected it).
+
+------------------------------------------------------------
+Evidence Priority Rules (CRITICAL)
+------------------------------------------------------------
+
+- CURRENT_5S_CAPTION is the ONLY source that can justify
+  responding at the CURRENT moment.
+- Retrieved memory evidence MUST NOT create a new interaction by itself.
+- Memory evidence may ONLY:
+  • clarify ambiguity in CURRENT_5S_CAPTION,
+  • confirm or refute assumptions about task progress,
+  • disambiguate objects, steps, or states,
+  • suppress a response if the issue was already handled.
+
+If CURRENT_5S_CAPTION does not justify responding NOW,
+you must NOT respond, even if memory suggests something relevant.
+
+------------------------------------------------------------
+Your Role
+------------------------------------------------------------
+
+Your role is to decide whether the assistant should INTERACT
+with the user at the CURRENT moment,
+in order to comply with SYSTEM_PROMPT and satisfy USER_PROMPT.
+
+You are NOT deciding whether to trigger external services
+or to proactively intervene beyond what SYSTEM_PROMPT allows.
+
+------------------------------------------------------------
+Your Task
+------------------------------------------------------------
+
+Given SYSTEM_PROMPT, USER_PROMPT, CURRENT_5S_CAPTION,
+and RETRIEVED_MEMORY_EVIDENCE,
+decide EXACTLY ONE of the following:
+
+1) Do NOT respond now.
+2) Respond NOW with an appropriate assistant message.
+
+------------------------------------------------------------
+Decision Rules (STRICT)
+------------------------------------------------------------
+
+A) Respond NOW if and only if ALL conditions hold:
+- Responding is allowed or required by SYSTEM_PROMPT, AND
+- One of the following is true:
+  (a) USER_PROMPT explicitly requests help, information,
+      or expresses difficulty that can be addressed now, OR
+  (b) SYSTEM_PROMPT defines the assistant as proactive or instructional,
+      AND CURRENT_5S_CAPTION shows a task-relevant moment
+      where interaction is appropriate now,
+- AND the response can be correctly grounded in:
+  - CURRENT_5S_CAPTION alone, OR
+  - CURRENT_5S_CAPTION clarified by RETRIEVED_MEMORY_EVIDENCE.
+
+IMPORTANT:
+If USER_PROMPT states a general goal (e.g., “I want to make X”),
+you may respond NOW ONLY if CURRENT_5S_CAPTION,
+possibly clarified by memory,
+makes it clear which guidance is appropriate at this moment.
+
+------------------------------------------------------------
+
+B) Do NOT respond now if:
+- CURRENT_5S_CAPTION does not support interaction at this moment,
+- The correct response would depend on unseen past context
+  not resolved by the retrieved memory,
+- A similar response was very recently given
+  and RECENT_INTERACTION_HISTORY shows no meaningful change,
+- SYSTEM_PROMPT discourages interaction at this time.
+
+In these cases, output [].
+
+------------------------------------------------------------
+Temporal Alignment Rule (CRITICAL)
+------------------------------------------------------------
+
+USER_PROMPT timestamps indicate when the user spoke,
+but do NOT determine when the assistant should respond.
+
+If you respond NOW:
+- The response MUST be anchored to the CURRENT moment.
+- The timestamp MUST be derived from CURRENT_5S_CAPTION.
+
+------------------------------------------------------------
+Timestamp Node Rule
+------------------------------------------------------------
+
+If and ONLY if you respond NOW, you MUST output exactly ONE timestamp.
+
+Priority order:
+1) If CURRENT_5S_CAPTION includes an explicit timestamp
+   (e.g., “DAY# HH:MM:SS”), use it exactly.
+2) Otherwise, if a frame index or time marker is provided,
+   output it verbatim.
+3) If the caption contains fine-grained temporal annotations
+   (e.g., bracketed timecodes),
+   you MAY infer the timestamp only if it is exact and unambiguous.
+4) Do NOT fabricate, interpolate, or approximate timestamps.
+
+------------------------------------------------------------
+Output Format (STRICT)
+------------------------------------------------------------
+
+Case 1: Do not respond
+Output exactly:
+[]
+
+Case 2: Respond now
+Output exactly ONE JSON object:
+{
+  "decision": "respond_now",
+  "timestamp": "DAY# HH:MM:SS",
+  "response": "<concise assistant response compliant with SYSTEM_PROMPT>",
+  "evidence":
+    "<brief factual paraphrase of CURRENT_5S_CAPTION,
+      optionally clarified by retrieved memory,
+      explaining why responding now is appropriate>"
+}
+
+------------------------------------------------------------
+In-Content Examples
+------------------------------------------------------------
+
+Example 1 — Respond now (memory clarifies task stage)
+
+USER_PROMPT:
+"[00:00:04] I want to make pour-over coffee."
+
+CURRENT_5S_CAPTION:
+"DAY1 00:15:40 I am holding a kettle above a filter with coffee grounds."
+
+RETRIEVED_MEMORY_EVIDENCE:
+"Earlier memory indicates the beans were already ground and placed."
+
+MODEL OUTPUT:
+{
+  "decision": "respond_now",
+  "timestamp": "DAY1 00:15:40",
+  "response": "You can start pouring a small amount of water to let the coffee bloom.",
+  "evidence":
+    "I am holding a kettle above the filter with coffee grounds, and memory confirms preparation steps are done."
+}
+
+------------------------------------------------------------
+
+Example 2 — Do not respond (memory suggests uncertainty remains)
+
+USER_PROMPT:
+"[00:00:04] I want to make pour-over coffee."
+
+CURRENT_5S_CAPTION:
+"DAY1 00:15:40 I am standing near the counter."
+
+RETRIEVED_MEMORY_EVIDENCE:
+"Past memory shows multiple different steps across the session."
+
+MODEL OUTPUT:
+[]
+
+------------------------------------------------------------
+Final Instruction
+------------------------------------------------------------
+
+Based on SYSTEM_PROMPT, USER_PROMPT,
+CURRENT_5S_CAPTION as the PRIMARY evidence,
+and RETRIEVED_MEMORY_EVIDENCE as SUPPORTING evidence only,
+output STRICTLY one of:
+[]  OR
+{ "decision": "respond_now", ... }
+"""
