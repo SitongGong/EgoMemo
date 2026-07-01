@@ -79,12 +79,13 @@ def main():
         if rs:
             print(f"    {ds:14s} R={np.mean([x['rationality'] for x in rs]):.3f}  "
                   f"E={np.mean([x['effectiveness'] for x in rs]):.3f}  (n={len(rs)})")
+    os.makedirs(paths.OUTPUT_ROOT, exist_ok=True)
     json.dump({"model": MODEL, "n": len(valid),
                "global": {"rationality": round(float(gr),3), "effectiveness": round(float(ge),3)},
                "per_dataset": {ds: {"rationality": round(float(np.mean([x['rationality'] for x in by[ds]])),3),
                                     "effectiveness": round(float(np.mean([x['effectiveness'] for x in by[ds]])),3),
                                     "n": len(by[ds])} for ds in by}},
-              open(os.path.join(paths.OUTPUT_ROOT, f"llm_score_{MODEL.replace(chr(47),chr(95))}.json"), "w"),
+              open(os.path.join(paths.OUTPUT_ROOT, f"llm_score_{MODEL.replace('/','_')}.json"), "w"),
               ensure_ascii=False, indent=2)
     print(f"\n已存 llm_score_{MODEL.replace('/','_')}.json")
 
