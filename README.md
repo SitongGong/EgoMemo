@@ -187,9 +187,12 @@ own README for setup.
 ## Citation
 
 ```bibtex
-@article{egomemo,
-  title   = {Vinci2: Providing Proactive Assistance in Continuous Egocentric Videos},
-  year    = {2026}
+@inproceedings{gong2026vinci2,
+  title     = {Vinci2: Providing Proactive Assistance in Continuous Egocentric Videos},
+  author    = {Gong, Sitong and Yan, Tianyu and Kang, Caixin and Zheng, Bo and
+               Ruan, Xiang and Lu, Huchuan and Zhang, Kaipeng and Sato, Yoichi and Huang, Yifei},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2026}
 }
 ```
 
